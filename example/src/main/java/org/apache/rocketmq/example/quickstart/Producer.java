@@ -52,6 +52,7 @@ public class Producer {
 
         for (int i = 0; i < 1000; i++) {
             try {
+                
 
                 /*
                  * Create a message instance, specifying topic, tag and message body.
