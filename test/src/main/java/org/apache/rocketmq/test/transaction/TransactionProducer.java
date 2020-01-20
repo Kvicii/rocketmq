@@ -32,6 +32,16 @@ public class TransactionProducer {
         String[] tags = new String[]{"TagA", "TagB", "TagC", "TagD", "TagE"};
         for (int i = 0; i < 10; i++) {
             Message message = new Message("TopicTest1234", tags[i % tags.length], "KEY:" + i, ("Hello RocketMQ " + i).getBytes());
+            int finalI = i;
+            /**
+             * 发送顺序消息
+             */
+            producer.send(message, (mqs, msg, arg) -> {
+
+                Long a = (Long) arg;
+                int num = finalI % mqs.size();
+                return mqs.get(num);
+            }, i);
             TransactionSendResult sendResult = producer.sendMessageInTransaction(message, null);
         }
     }

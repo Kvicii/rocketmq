@@ -29,16 +29,41 @@ public class TransactionListenerImpl implements TransactionListener {
 
     private ConcurrentHashMap<String, Integer> localTrans = new ConcurrentHashMap<>();
 
+    /**
+     * half消息成功之后回调函数
+     *
+     * @param msg Half(prepare) message
+     * @param arg Custom business parameter
+     * @return
+     */
     @Override
     public LocalTransactionState executeLocalTransaction(Message msg, Object arg) {
-        int value = transactionIndex.getAndIncrement();
-        int status = value % 3;
-        localTrans.put(msg.getTransactionId(), status);
-        return LocalTransactionState.UNKNOW;
+
+//        int value = transactionIndex.getAndIncrement();
+//        int status = value % 3;
+//        localTrans.put(msg.getTransactionId(), status);
+//        return LocalTransactionState.UNKNOW;
+
+//        执行本地事务 根据本地事务执行结果选择发送commit消息/rollback消息
+        try {
+//            本地事务成功 发送commit消息到OP_TOPIC标记half消息成功 并写入业务TOPIC
+            return LocalTransactionState.COMMIT_MESSAGE;
+        } catch (Exception e) {
+//            本地事务失败 发送rollback消息到OP_TOPIC标记half消息失败
+            return LocalTransactionState.ROLLBACK_MESSAGE;
+        }
     }
 
+    /**
+     * 由于某种原因没有half消息发送之后没有返回回调函数
+     *
+     * @param msg Check message
+     * @return
+     */
     @Override
     public LocalTransactionState checkLocalTransaction(MessageExt msg) {
+
+//        查询本地事务执行结果 根据结果去commit或rollback half消息
         Integer status = localTrans.get(msg.getTransactionId());
         if (null != status) {
             switch (status) {
