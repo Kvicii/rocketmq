@@ -829,6 +829,11 @@ public class BrokerController {
         return this.brokerConfig.getBrokerIP1() + ":" + this.nettyServerConfig.getListenPort();
     }
 
+    /**
+     * broker启动
+     *
+     * @throws Exception
+     */
     public void start() throws Exception {
         if (this.messageStore != null) {
             this.messageStore.start();
@@ -868,6 +873,9 @@ public class BrokerController {
             this.registerBrokerAll(true, false, true);
         }
 
+        /**
+         * 启动broker时启动定时任务 每30s执行一次 向所有namesrv发送心跳包
+         */
         this.scheduledExecutorService.scheduleAtFixedRate(() -> {
             try {
                 BrokerController.this.registerBrokerAll(true, false, brokerConfig.isForceRegister());
@@ -905,6 +913,13 @@ public class BrokerController {
         doRegisterBrokerAll(true, false, topicConfigSerializeWrapper);
     }
 
+    /**
+     * broker向namesrv发送心跳包实际调用方法
+     *
+     * @param checkOrderConfig
+     * @param oneway
+     * @param forceRegister
+     */
     public synchronized void registerBrokerAll(final boolean checkOrderConfig, boolean oneway, boolean forceRegister) {
         TopicConfigSerializeWrapper topicConfigWrapper = this.getTopicConfigManager().buildTopicConfigSerializeWrapper();
 

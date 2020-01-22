@@ -132,6 +132,9 @@ public class RouteInfoManager {
             try {
                 this.lock.writeLock().lockInterruptibly();
 
+                /**
+                 * 维护clusterAddrTable
+                 */
                 Set<String> brokerNames = this.clusterAddrTable.get(clusterName);
                 if (null == brokerNames) {
                     brokerNames = new HashSet<>();
@@ -139,8 +142,13 @@ public class RouteInfoManager {
                 }
                 brokerNames.add(brokerName);
 
+                /**
+                 * false达标并非第一次注册
+                 */
                 boolean registerFirst = false;
-
+                /**
+                 * 维护brokerAddrTable和brokerData
+                 */
                 BrokerData brokerData = this.brokerAddrTable.get(brokerName);
                 if (null == brokerData) {
                     registerFirst = true;
@@ -161,12 +169,21 @@ public class RouteInfoManager {
                 String oldAddr = brokerData.getBrokerAddrs().put(brokerId, brokerAddr);
                 registerFirst = registerFirst || (null == oldAddr);
 
+                /**
+                 * broker为Master
+                 * topic首次注册或者配置信息发生变化
+                 */
                 if (null != topicConfigWrapper
                         && MixAll.MASTER_ID == brokerId) {
                     if (this.isBrokerTopicConfigChanged(brokerAddr, topicConfigWrapper.getDataVersion())
                             || registerFirst) {
                         ConcurrentMap<String, TopicConfig> tcTable =
                                 topicConfigWrapper.getTopicConfigTable();
+                        /**
+                         * 填充topicQueueTable
+                         * 其实是默认主题自动注册路由信息 其中包含mixAll.DEFAULT_TOPIC路由信息
+                         * 当生产者发送消息时 如果该主题并未创建并且BrokerConfig的autoCreateTopicEnable=true时 将返回MixAll.DEFAULT_TOPIC的路由信息
+                         */
                         if (tcTable != null) {
                             for (Map.Entry<String, TopicConfig> entry : tcTable.entrySet()) {
                                 this.createAndUpdateQueueData(brokerName, entry.getValue());
@@ -175,6 +192,9 @@ public class RouteInfoManager {
                     }
                 }
 
+                /**
+                 * 更新brokerLiveTable
+                 */
                 BrokerLiveInfo prevBrokerLiveInfo = this.brokerLiveTable.put(brokerAddr,
                         new BrokerLiveInfo(
                                 System.currentTimeMillis(),
@@ -185,6 +205,9 @@ public class RouteInfoManager {
                     log.info("new broker registered, {} HAServer: {}", brokerAddr, haServerAddr);
                 }
 
+                /**
+                 * 注册broker的过滤器server地址列表
+                 */
                 if (filterServerList != null) {
                     if (filterServerList.isEmpty()) {
                         this.filterServerTable.remove(brokerAddr);
@@ -193,6 +216,9 @@ public class RouteInfoManager {
                     }
                 }
 
+                /**
+                 * 如果此broker为从节点 需要查找该broker的Master节点信息并更新对应的信息
+                 */
                 if (MixAll.MASTER_ID != brokerId) {
                     String masterAddr = brokerData.getBrokerAddrs().get(MixAll.MASTER_ID);
                     if (masterAddr != null) {
@@ -241,6 +267,9 @@ public class RouteInfoManager {
         queueData.setPerm(topicConfig.getPerm());
         queueData.setTopicSynFlag(topicConfig.getTopicSysFlag());
 
+        /**
+         * 填充topicQueueTable
+         */
         List<QueueData> queueDataList = this.topicQueueTable.get(topicConfig.getTopicName());
         if (null == queueDataList) {
             queueDataList = new LinkedList<>();

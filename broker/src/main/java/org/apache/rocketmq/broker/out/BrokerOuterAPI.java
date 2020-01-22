@@ -112,6 +112,21 @@ public class BrokerOuterAPI {
         this.remotingClient.updateNameServerAddressList(lst);
     }
 
+    /**
+     * broker发送心跳包实际封装处理方法
+     *
+     * @param clusterName
+     * @param brokerAddr
+     * @param brokerName
+     * @param brokerId
+     * @param haServerAddr
+     * @param topicConfigWrapper
+     * @param filterServerList
+     * @param oneway
+     * @param timeoutMills
+     * @param compressed
+     * @return
+     */
     public List<RegisterBrokerResult> registerBrokerAll(
             final String clusterName,
             final String brokerAddr,
@@ -133,11 +148,13 @@ public class BrokerOuterAPI {
              */
             final RegisterBrokerRequestHeader requestHeader = new RegisterBrokerRequestHeader();
             /**
-             * brokerdizih
+             * broker地址
              */
             requestHeader.setBrokerAddr(brokerAddr);
             /**
-             * brokerId 0：mater >0：slave
+             * brokerId
+             * = 0：mater
+             * > 0：slave
              */
             requestHeader.setBrokerId(brokerId);
             /**
@@ -202,6 +219,10 @@ public class BrokerOuterAPI {
             final byte[] body
     ) throws RemotingCommandException, MQBrokerException, RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException,
             InterruptedException {
+        /**
+         * 每次broker向namesrv发送心跳包都会定义一个RequestCode
+         * 实际在网络处理器中进行相关请求处理
+         */
         RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.REGISTER_BROKER, requestHeader);
         request.setBody(body);
 
