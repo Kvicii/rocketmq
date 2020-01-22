@@ -474,7 +474,13 @@ public class RouteInfoManager {
         return null;
     }
 
+    /**
+     * namesrv其中的一个定时任务 检测broker心跳
+     */
     public void scanNotActiveBroker() {
+        /**
+         * 遍历brokerLiveTable 检测brokerLiveTable的lastUpdateTimestamp
+         */
         Iterator<Entry<String, BrokerLiveInfo>> it = this.brokerLiveTable.entrySet().iterator();
         while (it.hasNext()) {
             Entry<String, BrokerLiveInfo> next = it.next();
@@ -483,6 +489,9 @@ public class RouteInfoManager {
              * 120s没有收到心跳包 namesrv将移除broker的路由信息并同时关闭socket连接
              */
             if ((last + BROKER_CHANNEL_EXPIRED_TIME) < System.currentTimeMillis()) {
+                /**
+                 * 关闭channel 删除与该broker相关的路由信息
+                 */
                 RemotingUtil.closeChannel(next.getValue().getChannel());
                 it.remove();
                 log.warn("The broker channel expired, {} {}ms", next.getKey(), BROKER_CHANNEL_EXPIRED_TIME);
@@ -492,6 +501,9 @@ public class RouteInfoManager {
     }
 
     public void onChannelDestroy(String remoteAddr, Channel channel) {
+        /**
+         * 定义局部变量用于存储brokerAddress
+         */
         String brokerAddrFound = null;
         if (channel != null) {
             try {
@@ -520,15 +532,27 @@ public class RouteInfoManager {
             log.info("the broker's channel destroyed, {}, clean it's data structure at once", brokerAddrFound);
         }
 
+        /**
+         * 路由表维护需要申请写锁
+         */
         if (brokerAddrFound != null && brokerAddrFound.length() > 0) {
 
             try {
                 try {
+                    /**
+                     * 添加写锁开始维护路由表
+                     */
                     this.lock.writeLock().lockInterruptibly();
+//                    1. 根据brokerAddress从brokerLiveTable filterServerTable中移除broker信息
                     this.brokerLiveTable.remove(brokerAddrFound);
+//  -------------------------------------------------------------------------------------------------------------------
                     this.filterServerTable.remove(brokerAddrFound);
                     String brokerNameFound = null;
                     boolean removeBrokerName = false;
+                    /**
+                     * 2.维护brokerAddrTable 从中取出brokerData
+                     * 再从brokerData中取出并遍历brokerAddrs 剔除具体broker信息
+                     */
                     Iterator<Entry<String, BrokerData>> itBrokerAddrTable =
                             this.brokerAddrTable.entrySet().iterator();
                     while (itBrokerAddrTable.hasNext() && (null == brokerNameFound)) {
@@ -547,7 +571,9 @@ public class RouteInfoManager {
                                 break;
                             }
                         }
-
+                        /**
+                         * 经过上述操作后brokerAddrs如果不再含有元素 从brokerAddrTable中剔除broker信息
+                         */
                         if (brokerData.getBrokerAddrs().isEmpty()) {
                             removeBrokerName = true;
                             itBrokerAddrTable.remove();
@@ -555,8 +581,15 @@ public class RouteInfoManager {
                                     brokerData.getBrokerName());
                         }
                     }
-
+//  -------------------------------------------------------------------------------------------------------------------
+                    /**
+                     * 3.根据维护brokerAddrTable过程拿到的变量进行
+                     * 实质上是维护broker和cluster之间的关系
+                     */
                     if (brokerNameFound != null && removeBrokerName) {
+                        /**
+                         * 遍历clusterAddrTable 找到对应的brokerName 剔除broker
+                         */
                         Iterator<Entry<String, Set<String>>> it = this.clusterAddrTable.entrySet().iterator();
                         while (it.hasNext()) {
                             Entry<String, Set<String>> entry = it.next();
@@ -568,8 +601,8 @@ public class RouteInfoManager {
                                         brokerNameFound, clusterName);
 
                                 if (brokerNames.isEmpty()) {
-                                    log.info("remove the clusterName[{}] from clusterAddrTable, because channel destroyed and no broker in this cluster",
-                                            clusterName);
+                                    log.info("remove the clusterName[{}] from clusterAddrTable, " +
+                                            "because channel destroyed and no broker in this cluster", clusterName);
                                     it.remove();
                                 }
 
@@ -577,7 +610,10 @@ public class RouteInfoManager {
                             }
                         }
                     }
-
+//  -------------------------------------------------------------------------------------------------------------------
+                    /**
+                     * 4.根据brokerName 遍历所有TOPIC队列 如果队列中含有当前broker的队列信息则移除
+                     */
                     if (removeBrokerName) {
                         Iterator<Entry<String, List<QueueData>>> itTopicQueueTable =
                                 this.topicQueueTable.entrySet().iterator();
@@ -596,6 +632,9 @@ public class RouteInfoManager {
                                 }
                             }
 
+                            /**
+                             * 操作之后的列队如果为空 从topicQueueTable中剔除改TOPIC
+                             */
                             if (queueDataList.isEmpty()) {
                                 itTopicQueueTable.remove();
                                 log.info("remove topic[{}] all queue, from topicQueueTable, because channel destroyed",
@@ -604,6 +643,9 @@ public class RouteInfoManager {
                         }
                     }
                 } finally {
+                    /**
+                     * 释放写锁完成路由维护操作
+                     */
                     this.lock.writeLock().unlock();
                 }
             } catch (Exception e) {
