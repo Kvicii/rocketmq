@@ -45,7 +45,7 @@ public class NamesrvConfig {
     private String productEnvName = "center";
     private boolean clusterTest = false;
     /**
-     * 是否支持殊勋消息
+     * 是否支持顺序消息
      */
     private boolean orderMessageEnable = false;
 
