@@ -16,21 +16,29 @@
  */
 package org.apache.rocketmq.client.impl;
 
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.rocketmq.client.ClientConfig;
 import org.apache.rocketmq.client.impl.factory.MQClientInstance;
 import org.apache.rocketmq.client.log.ClientLogger;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.remoting.RPCHook;
 
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
+
 public class MQClientManager {
     private final static InternalLogger log = ClientLogger.getLog();
+    /**
+     * JVM实例只存在唯一一个MQClientManager实例
+     * 典型的单例模式获取MQClientManager
+     */
     private static MQClientManager instance = new MQClientManager();
     private AtomicInteger factoryIndexGenerator = new AtomicInteger();
+    /**
+     * 同一个clientId只会创建一个MQClientInstance
+     */
     private ConcurrentMap<String/* clientId */, MQClientInstance> factoryTable =
-        new ConcurrentHashMap<String, MQClientInstance>();
+            new ConcurrentHashMap<String, MQClientInstance>();
 
     private MQClientManager() {
 
@@ -45,12 +53,18 @@ public class MQClientManager {
     }
 
     public MQClientInstance getOrCreateMQClientInstance(final ClientConfig clientConfig, RPCHook rpcHook) {
+        /**
+         * 创建clientId 格式为IP@instance@unitname
+         * 由于同一台物理机部署多个MQ时clientId可能会混乱
+         * 所以如果instance为默认值DEFAULT时 RocketMQ会自动将instance设置为进程ID 避免了相互影响
+         * MQClientInstance是生产者、消费者与namesrv和broker之间的网络通道
+         */
         String clientId = clientConfig.buildMQClientId();
         MQClientInstance instance = this.factoryTable.get(clientId);
         if (null == instance) {
             instance =
-                new MQClientInstance(clientConfig.cloneClientConfig(),
-                    this.factoryIndexGenerator.getAndIncrement(), clientId, rpcHook);
+                    new MQClientInstance(clientConfig.cloneClientConfig(),
+                            this.factoryIndexGenerator.getAndIncrement(), clientId, rpcHook);
             MQClientInstance prev = this.factoryTable.putIfAbsent(clientId, instance);
             if (prev != null) {
                 instance = prev;
