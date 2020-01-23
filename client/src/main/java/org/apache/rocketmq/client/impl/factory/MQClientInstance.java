@@ -175,36 +175,50 @@ public class MQClientInstance {
 
             info.setOrderTopic(true);
         } else {
+            /**
+             * 将TopicRouteData中的queueDatas转换为TopicPublishInfo中的messageQueueList
+             */
             List<QueueData> qds = route.getQueueDatas();
             Collections.sort(qds);
             for (QueueData qd : qds) {
+                /**
+                 * 如果队列没有写权限继续遍历下一个brokerData
+                 */
                 if (PermName.isWriteable(qd.getPerm())) {
                     BrokerData brokerData = null;
                     for (BrokerData bd : route.getBrokerDatas()) {
+                        /**
+                         * 根据brokerName找到brokerData信息
+                         */
                         if (bd.getBrokerName().equals(qd.getBrokerName())) {
                             brokerData = bd;
                             break;
                         }
                     }
-
+                    /**
+                     * 找不到continue
+                     */
                     if (null == brokerData) {
                         continue;
                     }
-
+                    /**
+                     * 没有找到Master节点continue
+                     */
                     if (!brokerData.getBrokerAddrs().containsKey(MixAll.MASTER_ID)) {
                         continue;
                     }
-
+                    /**
+                     * 根据写队列个数、topic和brokerName创建MessageQueue
+                     * 填充TopicPublishInfo中的messageQueueList
+                     */
                     for (int i = 0; i < qd.getWriteQueueNums(); i++) {
                         MessageQueue mq = new MessageQueue(topic, qd.getBrokerName(), i);
                         info.getMessageQueueList().add(mq);
                     }
                 }
             }
-
             info.setOrderTopic(false);
         }
-
         return info;
     }
 
@@ -613,10 +627,18 @@ public class MQClientInstance {
             if (this.lockNamesrv.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
                 try {
                     TopicRouteData topicRouteData;
+                    /**
+                     * 1.isDefault = true 使用默认主题去查询
+                     * isDefault = false 使用参数topic查询
+                     * 如果查询到的topicRouteData为null 返回false
+                     */
                     if (isDefault && defaultMQProducer != null) {
                         topicRouteData = this.mQClientAPIImpl.getDefaultTopicRouteInfoFromNameServer(defaultMQProducer.getCreateTopicKey(),
                                 1000 * 3);
                         if (topicRouteData != null) {
+                            /**
+                             * 如果查询到路由信息 将路由消息中度写队列的个数替换为生产者默认的队列个数
+                             */
                             for (QueueData data : topicRouteData.getQueueDatas()) {
                                 int queueNums = Math.min(defaultMQProducer.getDefaultTopicQueueNums(), data.getReadQueueNums());
                                 data.setReadQueueNums(queueNums);
@@ -627,6 +649,9 @@ public class MQClientInstance {
                         topicRouteData = this.mQClientAPIImpl.getTopicRouteInfoFromNameServer(topic, 1000 * 3);
                     }
                     if (topicRouteData != null) {
+                        /**
+                         * 2.路由信息未找到 与本地缓存中的路由信息进行对比
+                         */
                         TopicRouteData old = this.topicRouteTable.get(topic);
                         boolean changed = topicRouteDataIsChange(old, topicRouteData);
                         if (!changed) {
@@ -643,6 +668,9 @@ public class MQClientInstance {
                             }
 
                             // Update Pub info
+                            /**
+                             * 3.更新MQClientInstance broker地址缓存表
+                             */
                             {
                                 TopicPublishInfo publishInfo = topicRouteData2TopicPublishInfo(topic, topicRouteData);
                                 publishInfo.setHaveTopicRouterInfo(true);
@@ -651,6 +679,9 @@ public class MQClientInstance {
                                     Entry<String, MQProducerInner> entry = it.next();
                                     MQProducerInner impl = entry.getValue();
                                     if (impl != null) {
+                                        /**
+                                         * 更新MQClientInstance所管辖的所有生产者关于topic的路由信息
+                                         */
                                         impl.updateTopicPublishInfo(topic, publishInfo);
                                     }
                                 }
