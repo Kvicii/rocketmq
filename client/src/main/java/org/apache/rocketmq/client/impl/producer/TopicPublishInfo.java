@@ -80,10 +80,24 @@ public class TopicPublishInfo {
         this.haveTopicRouterInfo = haveTopicRouterInfo;
     }
 
+    /**
+     * sendLatencyFaultEnable参数未开启时执行
+     *
+     * @param lastBrokerName 上一次选择的执行发送消息失败的broker
+     * @return
+     */
     public MessageQueue selectOneMessageQueue(final String lastBrokerName) {
+        /**
+         * 第一次执行消息选择该参数一定为null 直接调用selectOneMessageQueue方法将sendWhichQueue自增再取值
+         * 可以有效地规避上次故障的broker 但是如果选择的都是同一个broker下的不同队列是会失败的
+         * 引发消息重试带来性能损耗
+         */
         if (lastBrokerName == null) {
             return selectOneMessageQueue();
         } else {
+            /**
+             * 之后规避上次选择MessageQueue
+             */
             int index = this.sendWhichQueue.getAndIncrement();
             for (int i = 0; i < this.messageQueueList.size(); i++) {
                 int pos = Math.abs(index++) % this.messageQueueList.size();
