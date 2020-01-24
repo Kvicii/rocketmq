@@ -167,6 +167,11 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         }
     }
 
+    /**
+     * 注册钩子处理类
+     *
+     * @param hook
+     */
     public void registerSendMessageHook(final SendMessageHook hook) {
         this.sendMessageHookList.add(hook);
         log.info("register sendMessage Hook, {}", hook.hookName());
@@ -740,6 +745,21 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         }
     }
 
+    /**
+     * 消息发送的核心API
+     *
+     * @param msg               待发送消息
+     * @param mq                消息发送的目标队列
+     * @param communicationMode 消息发送模式 SYNC/ASYNC/ONEWAY
+     * @param sendCallback      异步消息回调函数
+     * @param topicPublishInfo  topic路由信息
+     * @param timeout           消息发送超时时间
+     * @return
+     * @throws MQClientException
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     private SendResult sendKernelImpl(final Message msg,
                                       final MessageQueue mq,
                                       final CommunicationMode communicationMode,
@@ -747,6 +767,10 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                                       final TopicPublishInfo topicPublishInfo,
                                       final long timeout) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         long beginStartTime = System.currentTimeMillis();
+        /**
+         * 获取broker Master的网络地址
+         * 如果没有找到 从更新namesrv的topic路由信息 如果还是没有找到抛异常
+         */
         String brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(mq.getBrokerName());
         if (null == brokerAddr) {
             tryToFindTopicPublishInfo(mq.getTopic());
@@ -759,7 +783,10 @@ public class DefaultMQProducerImpl implements MQProducerInner {
 
             byte[] prevBody = msg.getBody();
             try {
-                //for MessageBatch,ID has been set in the generating process
+                /**
+                 * for MessageBatch,ID has been set in the generating process
+                 * 委消息分配全局唯一ID
+                 */
                 if (!(msg instanceof MessageBatch)) {
                     MessageClientIDSetter.setUniqID(msg);
                 }
@@ -772,11 +799,17 @@ public class DefaultMQProducerImpl implements MQProducerInner {
 
                 int sysFlag = 0;
                 boolean msgBodyCompressed = false;
+                /**
+                 * 消息体超过4K 对消息体采用zip压缩
+                 * 并将sysFlag设置为COMPRESSED_FLAG
+                 */
                 if (this.tryToCompressMessage(msg)) {
                     sysFlag |= MessageSysFlag.COMPRESSED_FLAG;
                     msgBodyCompressed = true;
                 }
-
+                /**
+                 * 如果是事务PREPARED消息 将sysFlag设置为TRANSACTION_PREPARED_TYPE
+                 */
                 final String tranMsg = msg.getProperty(MessageConst.PROPERTY_TRANSACTION_PREPARED);
                 if (tranMsg != null && Boolean.parseBoolean(tranMsg)) {
                     sysFlag |= MessageSysFlag.TRANSACTION_PREPARED_TYPE;
@@ -793,7 +826,9 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                     checkForbiddenContext.setUnitMode(this.isUnitMode());
                     this.executeCheckForbiddenHook(checkForbiddenContext);
                 }
-
+                /**
+                 * 如果注册了消息发送的钩子函数 则先执行消息发送之前的增强操作
+                 */
                 if (this.hasSendMessageHook()) {
                     context = new SendMessageContext();
                     context.setProducer(this);
@@ -814,7 +849,12 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                     }
                     this.executeSendMessageHookBefore(context);
                 }
-
+                /**
+                 * 构建消息发送请求包
+                 * 主要包含：生产者组 topic名称 默认创建topic的key 该topic在单个broker的默认队列数 队列ID
+                 * 消息系统标记(sysFlag) 消息发送时间 消息标记(RocketMQ对消息中的flag不做任何处理 供应用程序使用)
+                 * 消息扩展属性 消息重试次数 是否是批量消息
+                 */
                 SendMessageRequestHeader requestHeader = new SendMessageRequestHeader();
                 requestHeader.setProducerGroup(this.defaultMQProducer.getProducerGroup());
                 requestHeader.setTopic(msg.getTopic());
@@ -859,7 +899,6 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                         if (topicWithNamespace) {
                             if (!messageCloned) {
                                 tmpMessage = MessageAccessor.cloneMessage(msg);
-                                messageCloned = true;
                             }
                             msg.setTopic(NamespaceUtil.withoutNamespace(msg.getTopic(), this.defaultMQProducer.getNamespace()));
                         }
@@ -942,7 +981,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
 
     private boolean tryToCompressMessage(final Message msg) {
         if (msg instanceof MessageBatch) {
-            //batch dose not support compressing right now
+            // batch dose not support compressing right now
             return false;
         }
         byte[] body = msg.getBody();
@@ -960,7 +999,6 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                 }
             }
         }
-
         return false;
     }
 
