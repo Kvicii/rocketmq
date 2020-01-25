@@ -405,7 +405,7 @@ public abstract class NettyRemotingAbstract {
             final SocketAddress addr = channel.remoteAddress();
             channel.writeAndFlush(request).addListener(new ChannelFutureListener() {
                 @Override
-                public void operationComplete(ChannelFuture f) throws Exception {
+                public void operationComplete(ChannelFuture f) {
                     if (f.isSuccess()) {
                         responseFuture.setSendRequestOK(true);
                         return;

@@ -55,7 +55,7 @@ public class ReplyMessageProcessor extends AbstractSendMessageProcessor implemen
     @Override
     public RemotingCommand processRequest(ChannelHandlerContext ctx,
         RemotingCommand request) throws RemotingCommandException {
-        SendMessageContext mqtraceContext = null;
+        SendMessageContext mqtraceContext;
         SendMessageRequestHeader requestHeader = parseRequestHeader(request);
         if (requestHeader == null) {
             return null;
