@@ -22,18 +22,32 @@ package org.apache.rocketmq.store;
 public class AppendMessageResult {
     // Return code
     private AppendMessageStatus status;
-    // Where to start writing
+    /**
+     * Where to start writing
+     * 消息的物理偏移量
+     */
     private long wroteOffset;
     // Write Bytes
     private int wroteBytes;
-    // Message ID
+    /**
+     * Message ID
+     * 消息ID
+     */
     private String msgId;
-    // Message storage timestamp
+    /**
+     * Message storage timestamp
+     * 消息存储时间
+     */
     private long storeTimestamp;
     // Consume queue's offset(step by one)
     private long logicsOffset;
-    private long pagecacheRT = 0;
-
+    /**
+     * 当前未使用
+     */
+    private long pagecacheRT;
+    /**
+     * 消息条数 批量消息发送时消息条数
+     */
     private int msgNum = 1;
 
     public AppendMessageResult(AppendMessageStatus status) {
@@ -41,7 +55,7 @@ public class AppendMessageResult {
     }
 
     public AppendMessageResult(AppendMessageStatus status, long wroteOffset, int wroteBytes, String msgId,
-        long storeTimestamp, long logicsOffset, long pagecacheRT) {
+                               long storeTimestamp, long logicsOffset, long pagecacheRT) {
         this.status = status;
         this.wroteOffset = wroteOffset;
         this.wroteBytes = wroteBytes;
@@ -122,14 +136,14 @@ public class AppendMessageResult {
     @Override
     public String toString() {
         return "AppendMessageResult{" +
-            "status=" + status +
-            ", wroteOffset=" + wroteOffset +
-            ", wroteBytes=" + wroteBytes +
-            ", msgId='" + msgId + '\'' +
-            ", storeTimestamp=" + storeTimestamp +
-            ", logicsOffset=" + logicsOffset +
-            ", pagecacheRT=" + pagecacheRT +
-            ", msgNum=" + msgNum +
-            '}';
+                "status=" + status +
+                ", wroteOffset=" + wroteOffset +
+                ", wroteBytes=" + wroteBytes +
+                ", msgId='" + msgId + '\'' +
+                ", storeTimestamp=" + storeTimestamp +
+                ", logicsOffset=" + logicsOffset +
+                ", pagecacheRT=" + pagecacheRT +
+                ", msgNum=" + msgNum +
+                '}';
     }
 }
