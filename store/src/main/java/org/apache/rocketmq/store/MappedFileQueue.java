@@ -31,20 +31,37 @@ import java.util.ListIterator;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public class MappedFileQueue {
+
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
+
     private static final InternalLogger LOG_ERROR = InternalLoggerFactory.getLogger(LoggerName.STORE_ERROR_LOGGER_NAME);
 
     private static final int DELETE_FILES_BATCH_MAX = 10;
 
+    /**
+     * 存储目录
+     */
     private final String storePath;
-
+    /**
+     * 存储的单个文件的大小
+     */
     private final int mappedFileSize;
-
+    /**
+     * MappedFile文件集合
+     */
     private final CopyOnWriteArrayList<MappedFile> mappedFiles = new CopyOnWriteArrayList<>();
-
+    /**
+     * 创建MappedFile服务类
+     */
     private final AllocateMappedFileService allocateMappedFileService;
-
+    /**
+     * 当前刷盘指针 该指针之前的所有数据应该是全部持久化到磁盘了的
+     */
     private long flushedWhere = 0;
+    /**
+     * 当属数据的提交指针 内存中ByteBuffer当前的写指针
+     * 该值应该 >= flushedWhere
+     */
     private long committedWhere = 0;
 
     private volatile long storeTimestamp = 0;
@@ -75,6 +92,15 @@ public class MappedFileQueue {
         }
     }
 
+    /**
+     * 根据消息存储时间查找MappedFile
+     * 从MappedFile列表第一个文件开始查找
+     * 找到第一个最后一次更新时间 >= 待查找时间戳的文件
+     * 如果不存在返回最后一个MappedFile文件
+     *
+     * @param timestamp
+     * @return
+     */
     public MappedFile getMappedFileByTime(final long timestamp) {
         Object[] mfs = this.copyMappedFiles(0);
 
@@ -103,7 +129,7 @@ public class MappedFileQueue {
     }
 
     public void truncateDirtyFiles(long offset) {
-        List<MappedFile> willRemoveFiles = new ArrayList<MappedFile>();
+        List<MappedFile> willRemoveFiles = new ArrayList<>();
 
         for (MappedFile file : this.mappedFiles) {
             long fileTailOffset = file.getFileFromOffset() + this.mappedFileSize;
@@ -285,13 +311,18 @@ public class MappedFileQueue {
         return true;
     }
 
+    /**
+     * 获取存储文件的最小偏移量
+     *
+     * @return
+     */
     public long getMinOffset() {
 
         if (!this.mappedFiles.isEmpty()) {
             try {
                 return this.mappedFiles.get(0).getFileFromOffset();
             } catch (IndexOutOfBoundsException e) {
-                //continue;
+                // continue;
             } catch (Exception e) {
                 log.error("getMinOffset has exception.", e);
             }
@@ -299,6 +330,12 @@ public class MappedFileQueue {
         return -1;
     }
 
+    /**
+     * 获取文件的最大偏移量
+     * 返回最后一个MappedFile文件的fileFromOffset + MappedFile文件当前的写指针或提交指针
+     *
+     * @return
+     */
     public long getMaxOffset() {
         MappedFile mappedFile = getLastMappedFile();
         if (mappedFile != null) {
@@ -307,6 +344,12 @@ public class MappedFileQueue {
         return 0;
     }
 
+    /**
+     * 获取文件当前的写指针
+     * 返回当前文件的fileFromOffset + 当前写指针的位置
+     *
+     * @return
+     */
     public long getMaxWrotePosition() {
         MappedFile mappedFile = getLastMappedFile();
         if (mappedFile != null) {
@@ -344,7 +387,7 @@ public class MappedFileQueue {
 
         int mfsLength = mfs.length - 1;
         int deleteCount = 0;
-        List<MappedFile> files = new ArrayList<MappedFile>();
+        List<MappedFile> files = new ArrayList<>();
         if (null != mfs) {
             for (int i = 0; i < mfsLength; i++) {
                 MappedFile mappedFile = (MappedFile) mfs[i];
@@ -454,6 +497,12 @@ public class MappedFileQueue {
 
     /**
      * Finds a mapped file by offset.
+     * 根据消息偏移量查找MappedFile
+     * 不能直接使用offset % mappedFileSize
+     * 由于使用了内存映射 只要存在于存储目录下的文件 都需要对应创建相应的内存映射文件
+     * 不定时将已消费的消息从存储文件中删除 会造成极大地内存压力与资源浪费
+     * RocketMQ采用定时删除策略(在存储文件中 每一个文件不一定是00000000000000000000开始)
+     * 根据offset定位MappedFile的算法是(int) ((offset / this.mappedFileSize) - (mappedFile.getFileFromOffset() / this.mappedFileSize)
      *
      * @param offset                Offset.
      * @param returnFirstOnNotFound If the mapped file is not found, then return the first one.
@@ -478,7 +527,6 @@ public class MappedFileQueue {
                         targetFile = this.mappedFiles.get(index);
                     } catch (Exception ignored) {
                     }
-
                     if (targetFile != null && offset >= targetFile.getFileFromOffset()
                             && offset < targetFile.getFileFromOffset() + this.mappedFileSize) {
                         return targetFile;
@@ -499,7 +547,6 @@ public class MappedFileQueue {
         } catch (Exception e) {
             log.error("findMappedFileByOffset Exception", e);
         }
-
         return null;
     }
 
