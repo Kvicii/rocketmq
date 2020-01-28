@@ -16,14 +16,15 @@
  */
 package org.apache.rocketmq.store;
 
-import java.io.File;
-import java.nio.ByteBuffer;
-import java.util.List;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.config.BrokerRole;
 import org.apache.rocketmq.store.config.StorePathConfigHelper;
+
+import java.io.File;
+import java.nio.ByteBuffer;
+import java.util.List;
 
 public class ConsumeQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -45,11 +46,11 @@ public class ConsumeQueue {
     private ConsumeQueueExt consumeQueueExt = null;
 
     public ConsumeQueue(
-        final String topic,
-        final int queueId,
-        final String storePath,
-        final int mappedFileSize,
-        final DefaultMessageStore defaultMessageStore) {
+            final String topic,
+            final int queueId,
+            final String storePath,
+            final int mappedFileSize,
+            final DefaultMessageStore defaultMessageStore) {
         this.storePath = storePath;
         this.mappedFileSize = mappedFileSize;
         this.defaultMessageStore = defaultMessageStore;
@@ -58,8 +59,8 @@ public class ConsumeQueue {
         this.queueId = queueId;
 
         String queueDir = this.storePath
-            + File.separator + topic
-            + File.separator + queueId;
+                + File.separator + topic
+                + File.separator + queueId;
 
         this.mappedFileQueue = new MappedFileQueue(queueDir, mappedFileSize, null);
 
@@ -67,11 +68,11 @@ public class ConsumeQueue {
 
         if (defaultMessageStore.getMessageStoreConfig().isEnableConsumeQueueExt()) {
             this.consumeQueueExt = new ConsumeQueueExt(
-                topic,
-                queueId,
-                StorePathConfigHelper.getStorePathConsumeQueueExt(defaultMessageStore.getMessageStoreConfig().getStorePathRootDir()),
-                defaultMessageStore.getMessageStoreConfig().getMappedFileSizeConsumeQueueExt(),
-                defaultMessageStore.getMessageStoreConfig().getBitMapLengthConsumeQueueExt()
+                    topic,
+                    queueId,
+                    StorePathConfigHelper.getStorePathConsumeQueueExt(defaultMessageStore.getMessageStoreConfig().getStorePathRootDir()),
+                    defaultMessageStore.getMessageStoreConfig().getMappedFileSizeConsumeQueueExt(),
+                    defaultMessageStore.getMessageStoreConfig().getBitMapLengthConsumeQueueExt()
             );
         }
     }
@@ -113,7 +114,7 @@ public class ConsumeQueue {
                         }
                     } else {
                         log.info("recover current consume queue file over,  " + mappedFile.getFileName() + " "
-                            + offset + " " + size + " " + tagsCode);
+                                + offset + " " + size + " " + tagsCode);
                         break;
                     }
                 }
@@ -123,7 +124,7 @@ public class ConsumeQueue {
                     if (index >= mappedFiles.size()) {
 
                         log.info("recover last consume queue file over, last mapped file "
-                            + mappedFile.getFileName());
+                                + mappedFile.getFileName());
                         break;
                     } else {
                         mappedFile = mappedFiles.get(index);
@@ -134,7 +135,7 @@ public class ConsumeQueue {
                     }
                 } else {
                     log.info("recover current consume queue queue over " + mappedFile.getFileName() + " "
-                        + (processOffset + mappedFileOffset));
+                            + (processOffset + mappedFileOffset));
                     break;
                 }
             }
@@ -152,14 +153,29 @@ public class ConsumeQueue {
         }
     }
 
+    /**
+     * 根据存储时间查找在ConsumeQueue的offset
+     *
+     * @param timestamp
+     * @return
+     */
     public long getOffsetInQueueByTime(final long timestamp) {
+        /**
+         * 根据时间戳定位到MappedFile物理文件
+         */
         MappedFile mappedFile = this.mappedFileQueue.getMappedFileByTime(timestamp);
         if (mappedFile != null) {
-            long offset = 0;
+            long offset;
+            /**
+             * 计算最低查找偏移量
+             */
             int low = minLogicOffset > mappedFile.getFileFromOffset() ? (int) (minLogicOffset - mappedFile.getFileFromOffset()) : 0;
-            int high = 0;
-            int midOffset = -1, targetOffset = -1, leftOffset = -1, rightOffset = -1;
+            int high;
+            int midOffset, targetOffset = -1, leftOffset = -1, rightOffset = -1;
             long leftIndexValue = -1L, rightIndexValue = -1L;
+            /**
+             * 获取当前存储文件中有效的最小消息物理偏移量minPhysicOffset
+             */
             long minPhysicOffset = this.defaultMessageStore.getMinPhyOffset();
             SelectMappedBufferResult sbr = mappedFile.selectMappedBuffer(0);
             if (null != sbr) {
@@ -171,24 +187,45 @@ public class ConsumeQueue {
                         byteBuffer.position(midOffset);
                         long phyOffset = byteBuffer.getLong();
                         int size = byteBuffer.getInt();
+                        /**
+                         * 查找到的消息偏移量 < 有效的最小物理偏移量
+                         * 说明待查找的物理偏移量肯定大于midOffset
+                         * 之后继续折半查找
+                         */
                         if (phyOffset < minPhysicOffset) {
                             low = midOffset + CQ_STORE_UNIT_SIZE;
                             leftOffset = midOffset;
                             continue;
                         }
-
+                        /**
+                         * 有效消息
+                         * 根据消息偏移量和消息长度获取消息存储时间戳
+                         */
                         long storeTime =
-                            this.defaultMessageStore.getCommitLog().pickupStoreTimestamp(phyOffset, size);
+                                this.defaultMessageStore.getCommitLog().pickupStoreTimestamp(phyOffset, size);
+
                         if (storeTime < 0) {
+                            /**
+                             * 无效消息 直接返回
+                             */
                             return 0;
                         } else if (storeTime == timestamp) {
+                            /**
+                             * 匹配到消息 跳出循环
+                             */
                             targetOffset = midOffset;
                             break;
                         } else if (storeTime > timestamp) {
+                            /**
+                             * 存储时间戳 > 待查找消息时间戳
+                             */
                             high = midOffset - CQ_STORE_UNIT_SIZE;
                             rightOffset = midOffset;
                             rightIndexValue = storeTime;
                         } else {
+                            /**
+                             * 存储时间戳 < 待查找消息时间戳
+                             */
                             low = midOffset + CQ_STORE_UNIT_SIZE;
                             leftOffset = midOffset;
                             leftIndexValue = storeTime;
@@ -196,19 +233,25 @@ public class ConsumeQueue {
                     }
 
                     if (targetOffset != -1) {
-
+                        /**
+                         * 说明找到了存储时间戳 == 待查找时间戳的消息
+                         */
                         offset = targetOffset;
                     } else {
                         if (leftIndexValue == -1) {
-
+                            /**
+                             * 返回消息比待查找时间戳大并且最接近待查找时间戳的偏移量
+                             */
                             offset = rightOffset;
                         } else if (rightIndexValue == -1) {
-
+                            /**
+                             * 返回消息比待查找时间戳小并且最接近查找时间戳的偏移量
+                             */
                             offset = leftOffset;
                         } else {
                             offset =
-                                Math.abs(timestamp - leftIndexValue) > Math.abs(timestamp
-                                    - rightIndexValue) ? rightOffset : leftOffset;
+                                    Math.abs(timestamp - leftIndexValue) > Math.abs(timestamp
+                                            - rightIndexValue) ? rightOffset : leftOffset;
                         }
                     }
 
@@ -351,7 +394,7 @@ public class ConsumeQueue {
                         if (offsetPy >= phyMinOffset) {
                             this.minLogicOffset = mappedFile.getFileFromOffset() + i;
                             log.info("Compute logical min offset: {}, topic: {}, queueId: {}",
-                                this.getMinOffsetInQueue(), this.topic, this.queueId);
+                                    this.getMinOffsetInQueue(), this.topic, this.queueId);
                             // This maybe not take effect, when not every consume queue has extend file.
                             if (isExtAddr(tagsCode)) {
                                 minExtAddr = tagsCode;
@@ -392,14 +435,14 @@ public class ConsumeQueue {
                     tagsCode = extAddr;
                 } else {
                     log.warn("Save consume queue extend fail, So just save tagsCode! {}, topic:{}, queueId:{}, offset:{}", cqExtUnit,
-                        topic, queueId, request.getCommitLogOffset());
+                            topic, queueId, request.getCommitLogOffset());
                 }
             }
             boolean result = this.putMessagePositionInfo(request.getCommitLogOffset(),
-                request.getMsgSize(), tagsCode, request.getConsumeQueueOffset());
+                    request.getMsgSize(), tagsCode, request.getConsumeQueueOffset());
             if (result) {
                 if (this.defaultMessageStore.getMessageStoreConfig().getBrokerRole() == BrokerRole.SLAVE ||
-                    this.defaultMessageStore.getMessageStoreConfig().isEnableDLegerCommitLog()) {
+                        this.defaultMessageStore.getMessageStoreConfig().isEnableDLegerCommitLog()) {
                     this.defaultMessageStore.getStoreCheckpoint().setPhysicMsgTimestamp(request.getStoreTimestamp());
                 }
                 this.defaultMessageStore.getStoreCheckpoint().setLogicsMsgTimestamp(request.getStoreTimestamp());
@@ -407,7 +450,7 @@ public class ConsumeQueue {
             } else {
                 // XXX: warn and notify me
                 log.warn("[BUG]put commit log position info to " + topic + ":" + queueId + " " + request.getCommitLogOffset()
-                    + " failed, retry " + i + " times");
+                        + " failed, retry " + i + " times");
 
                 try {
                     Thread.sleep(1000);
@@ -423,7 +466,7 @@ public class ConsumeQueue {
     }
 
     private boolean putMessagePositionInfo(final long offset, final int size, final long tagsCode,
-        final long cqOffset) {
+                                           final long cqOffset) {
 
         if (offset + size <= this.maxPhysicOffset) {
             log.warn("Maybe try to build consume queue repeatedly maxPhysicOffset={} phyOffset={}", maxPhysicOffset, offset);
@@ -447,7 +490,7 @@ public class ConsumeQueue {
                 this.mappedFileQueue.setCommittedWhere(expectLogicOffset);
                 this.fillPreBlank(mappedFile, expectLogicOffset);
                 log.info("fill pre blank space " + mappedFile.getFileName() + " " + expectLogicOffset + " "
-                    + mappedFile.getWrotePosition());
+                        + mappedFile.getWrotePosition());
             }
 
             if (cqOffset != 0) {
@@ -455,18 +498,18 @@ public class ConsumeQueue {
 
                 if (expectLogicOffset < currentLogicOffset) {
                     log.warn("Build  consume queue repeatedly, expectLogicOffset: {} currentLogicOffset: {} Topic: {} QID: {} Diff: {}",
-                        expectLogicOffset, currentLogicOffset, this.topic, this.queueId, expectLogicOffset - currentLogicOffset);
+                            expectLogicOffset, currentLogicOffset, this.topic, this.queueId, expectLogicOffset - currentLogicOffset);
                     return true;
                 }
 
                 if (expectLogicOffset != currentLogicOffset) {
                     LOG_ERROR.warn(
-                        "[BUG]logic queue order maybe wrong, expectLogicOffset: {} currentLogicOffset: {} Topic: {} QID: {} Diff: {}",
-                        expectLogicOffset,
-                        currentLogicOffset,
-                        this.topic,
-                        this.queueId,
-                        expectLogicOffset - currentLogicOffset
+                            "[BUG]logic queue order maybe wrong, expectLogicOffset: {} currentLogicOffset: {} Topic: {} QID: {} Diff: {}",
+                            expectLogicOffset,
+                            currentLogicOffset,
+                            this.topic,
+                            this.queueId,
+                            expectLogicOffset - currentLogicOffset
                     );
                 }
             }
@@ -488,10 +531,24 @@ public class ConsumeQueue {
         }
     }
 
+    /**
+     * 根据startIndex获取ConsumeQueue的数据
+     *
+     * @param startIndex
+     * @return
+     */
     public SelectMappedBufferResult getIndexBuffer(final long startIndex) {
         int mappedFileSize = this.mappedFileSize;
+        /**
+         * 获取物理偏移量 < minLoginOffset说明该消息已被删除直接返回null
+         */
         long offset = startIndex * CQ_STORE_UNIT_SIZE;
         if (offset >= this.getMinLogicOffset()) {
+            /**
+             * 根据物理偏移量查找MappedFile
+             * 之后通过offset与物理文件大小取模获取在该文件的偏移量
+             * 从偏移量往后取20个字节就是ConsumeQueue一条数据的大小
+             */
             MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset);
             if (mappedFile != null) {
                 SelectMappedBufferResult result = mappedFile.selectMappedBuffer((int) (offset % mappedFileSize));
@@ -523,7 +580,17 @@ public class ConsumeQueue {
         this.minLogicOffset = minLogicOffset;
     }
 
+    /**
+     * 获取下一个文件的起始偏移量
+     *
+     * @param index
+     * @return
+     */
     public long rollNextFile(final long index) {
+        /**
+         * 获取一个文件的字节数
+         * 除以20 = 含有信息的个数
+         */
         int mappedFileSize = this.mappedFileSize;
         int totalUnitsInFile = mappedFileSize / CQ_STORE_UNIT_SIZE;
         return index + totalUnitsInFile - index % totalUnitsInFile;
@@ -575,7 +642,7 @@ public class ConsumeQueue {
 
     protected boolean isExtWriteEnable() {
         return this.consumeQueueExt != null
-            && this.defaultMessageStore.getMessageStoreConfig().isEnableConsumeQueueExt();
+                && this.defaultMessageStore.getMessageStoreConfig().isEnableConsumeQueueExt();
     }
 
     /**
