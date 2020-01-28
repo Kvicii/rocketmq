@@ -40,6 +40,11 @@ public abstract class ReferenceResource {
         return this.available;
     }
 
+    /**
+     * 关闭MappedFile
+     *
+     * @param intervalForcibly
+     */
     public void shutdown(final long intervalForcibly) {
         if (this.available) {
             this.available = false;
@@ -53,6 +58,10 @@ public abstract class ReferenceResource {
         }
     }
 
+    /**
+     * 释放资源
+     * 只有引用计数 <= 0 才会释放
+     */
     public void release() {
         long value = this.refCount.decrementAndGet();
         if (value > 0)
@@ -70,6 +79,12 @@ public abstract class ReferenceResource {
 
     public abstract boolean cleanup(final long currentRef);
 
+    /**
+     * 清理是否完成判断方法
+     * release方法成功的将MappedFile资源释放掉才会返回true
+     *
+     * @return
+     */
     public boolean isCleanupOver() {
         return this.refCount.get() <= 0 && this.cleanupOver;
     }

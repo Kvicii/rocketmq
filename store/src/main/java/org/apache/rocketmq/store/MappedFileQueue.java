@@ -557,7 +557,7 @@ public class MappedFileQueue {
             try {
                 mappedFileFirst = this.mappedFiles.get(0);
             } catch (IndexOutOfBoundsException e) {
-                //ignore
+                // ignore
             } catch (Exception e) {
                 log.error("getFirstMappedFile has exception.", e);
             }

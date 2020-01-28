@@ -63,7 +63,7 @@ public class MappedFile extends ReferenceResource {
     protected final AtomicInteger wrotePosition = new AtomicInteger(0);
     /**
      * 当前文件的提交指针 如果开启transientStorePoolEnable 数据会存储在transientStorePool中
-     * 然后提交到内存映射ByteBuffer中 再刷到磁盘
+     * 然后提交到与物理文件对应的内存映射ByteBuffer中 再刷到磁盘
      */
     protected final AtomicInteger committedPosition = new AtomicInteger(0);
     /**
@@ -509,14 +509,35 @@ public class MappedFile extends ReferenceResource {
         return this.fileSize == this.wrotePosition.get();
     }
 
+    /**
+     * 查找pos到当前最大可读之间的数据
+     *
+     * @param pos
+     * @param size
+     * @return
+     */
     public SelectMappedBufferResult selectMappedBuffer(int pos, int size) {
         int readPosition = getReadPosition();
         if ((pos + size) <= readPosition) {
             if (this.hold()) {
+                /**
+                 * 由于在整个写入期间都未曾改变MappedByteBuffer的指针
+                 * 所以mappedByteBuffer.slice方法返回的共享缓存区空间为整个MappedFile
+                 */
                 ByteBuffer byteBuffer = this.mappedByteBuffer.slice();
+                /**
+                 * 设置待查找的位点 读取字节长为当前可读字节长度
+                 * 最终返回ByteBuffer的长度为size
+                 */
                 byteBuffer.position(pos);
                 ByteBuffer byteBufferNew = byteBuffer.slice();
                 byteBufferNew.limit(size);
+                /**
+                 * 整个共享缓存区的容量为fileSize - pos
+                 * 在操作SelectMappedBufferResult时不能对ByteBuffer调用flip方法
+                 * 操作ByteBuffer时如果使用了slice方法 对其ByteBuffer进行读取时一般手动指定position指针和limit指针
+                 * 而不是调用flip方法来切换读写状态
+                 */
                 return new SelectMappedBufferResult(this.fileFromOffset + pos, byteBufferNew, size, this);
             } else {
                 log.warn("matched, but hold failed, request pos: " + pos + ", fileFromOffset: "
@@ -546,20 +567,34 @@ public class MappedFile extends ReferenceResource {
         return null;
     }
 
+    /**
+     * 实际的资源清理
+     *
+     * @param currentRef
+     * @return
+     */
     @Override
     public boolean cleanup(final long currentRef) {
+        /**
+         * 返回true代表当前MappedFile可用 无需清理
+         */
         if (this.isAvailable()) {
             log.error("this file[REF:" + currentRef + "] " + this.fileName
                     + " have not shutdown, stop unmapping.");
             return false;
         }
-
+        /**
+         * 资源已经被清除掉
+         */
         if (this.isCleanupOver()) {
             log.error("this file[REF:" + currentRef + "] " + this.fileName
                     + " have cleanup, do not do it again.");
             return true;
         }
-
+        /**
+         * 堆外内存调用堆外内存的clean方法清除
+         * 维护MappedFile静态变量TOTAL_MAPPED_VIRTUAL_MEMORY和TOTAL_MAPPED_FILES
+         */
         clean(this.mappedByteBuffer);
         TOTAL_MAPPED_VIRTUAL_MEMORY.addAndGet(this.fileSize * (-1));
         TOTAL_MAPPED_FILES.decrementAndGet();
@@ -567,15 +602,33 @@ public class MappedFile extends ReferenceResource {
         return true;
     }
 
+    /**
+     * MappedFile销毁方法
+     *
+     * @param intervalForcibly 拒绝被销毁的最大存活时间
+     * @return
+     */
     public boolean destroy(final long intervalForcibly) {
+        /**
+         * 关闭MappedFile
+         */
         this.shutdown(intervalForcibly);
 
+        /**
+         * 是否清理完成
+         */
         if (this.isCleanupOver()) {
             try {
+                /**
+                 * 关闭文件通道
+                 */
                 this.fileChannel.close();
                 log.info("close file channel " + this.fileName + " OK");
 
                 long beginTime = System.currentTimeMillis();
+                /**
+                 * 删除物理文件
+                 */
                 boolean result = this.file.delete();
                 log.info("delete file[REF:" + this.getRefCount() + "] " + this.fileName
                         + (result ? " OK, " : " Failed, ") + "W:" + this.getWrotePosition() + " M:"
@@ -603,6 +656,9 @@ public class MappedFile extends ReferenceResource {
     }
 
     /**
+     * 获取MappedFile的最大读指针
+     * 只有提交了的数据(写入到MappedByteBuffer/FileChannel中的数据)才是安全的数据
+     *
      * @return The max position which have valid data
      */
     public int getReadPosition() {
