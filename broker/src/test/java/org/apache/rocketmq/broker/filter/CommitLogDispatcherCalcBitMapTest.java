@@ -71,8 +71,7 @@ public class CommitLogDispatcherCalcBitMapTest {
                 null,
                 UUID.randomUUID().toString(),
                 0,
-                0,
-                properties
+                    properties
             );
 
             calcBitMap.dispatch(dispatchRequest);
@@ -115,8 +114,7 @@ public class CommitLogDispatcherCalcBitMapTest {
                 null,
                 UUID.randomUUID().toString(),
                 0,
-                0,
-                properties
+                    properties
             );
 
             calcBitMap.dispatch(dispatchRequest);
@@ -152,8 +150,7 @@ public class CommitLogDispatcherCalcBitMapTest {
                 null,
                 UUID.randomUUID().toString(),
                 0,
-                0,
-                properties
+                    properties
             );
 
             calcBitMap.dispatch(dispatchRequest);

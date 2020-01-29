@@ -16,16 +16,17 @@
  */
 package org.apache.rocketmq.store.index;
 
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.logging.InternalLogger;
+import org.apache.rocketmq.logging.InternalLoggerFactory;
+import org.apache.rocketmq.store.MappedFile;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.util.List;
-import org.apache.rocketmq.common.constant.LoggerName;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
-import org.apache.rocketmq.store.MappedFile;
 
 public class IndexFile {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -35,16 +36,15 @@ public class IndexFile {
     private final int hashSlotNum;
     private final int indexNum;
     private final MappedFile mappedFile;
-    private final FileChannel fileChannel;
     private final MappedByteBuffer mappedByteBuffer;
     private final IndexHeader indexHeader;
 
     public IndexFile(final String fileName, final int hashSlotNum, final int indexNum,
-        final long endPhyOffset, final long endTimestamp) throws IOException {
+                     final long endPhyOffset, final long endTimestamp) throws IOException {
         int fileTotalSize =
-            IndexHeader.INDEX_HEADER_SIZE + (hashSlotNum * hashSlotSize) + (indexNum * indexSize);
+                IndexHeader.INDEX_HEADER_SIZE + (hashSlotNum * hashSlotSize) + (indexNum * indexSize);
         this.mappedFile = new MappedFile(fileName, fileTotalSize);
-        this.fileChannel = this.mappedFile.getFileChannel();
+        FileChannel fileChannel = this.mappedFile.getFileChannel();
         this.mappedByteBuffer = this.mappedFile.getMappedByteBuffer();
         this.hashSlotNum = hashSlotNum;
         this.indexNum = indexNum;
@@ -89,25 +89,42 @@ public class IndexFile {
         return this.mappedFile.destroy(intervalForcibly);
     }
 
+    /**
+     * 将消息索引建与消息偏移量的映射关系写入IndexFile
+     *
+     * @param key            消息索引
+     * @param phyOffset      消息物理偏移量
+     * @param storeTimestamp 消息存储时间戳
+     * @return
+     */
     public boolean putKey(final String key, final long phyOffset, final long storeTimestamp) {
+
         if (this.indexHeader.getIndexCount() < this.indexNum) {
+            /**
+             * 首先根据key求hash
+             * hash值再对Hasn槽取余定位到Hash槽下标
+             * 再定位到当前Hash槽的字节位置
+             */
             int keyHash = indexKeyHashMethod(key);
             int slotPos = keyHash % this.hashSlotNum;
             int absSlotPos = IndexHeader.INDEX_HEADER_SIZE + slotPos * hashSlotSize;
 
             FileLock fileLock = null;
-
             try {
-
                 // fileLock = this.fileChannel.lock(absSlotPos, hashSlotSize,
                 // false);
+                /**
+                 * 读取Hash槽中的数据
+                 * 如果存储的数据 <= 0 || > 当前已使用的条目 将slotValue设置为0
+                 */
                 int slotValue = this.mappedByteBuffer.getInt(absSlotPos);
                 if (slotValue <= invalidIndex || slotValue > this.indexHeader.getIndexCount()) {
                     slotValue = invalidIndex;
                 }
-
+                /**
+                 * 计算待存储消息与第一条消息时间戳的差值并转换成秒
+                 */
                 long timeDiff = storeTimestamp - this.indexHeader.getBeginTimestamp();
-
                 timeDiff = timeDiff / 1000;
 
                 if (this.indexHeader.getBeginTimestamp() <= 0) {
@@ -118,22 +135,34 @@ public class IndexFile {
                     timeDiff = 0;
                 }
 
+                /**
+                 * 解决Hash冲突的关键实现
+                 * 将条目信息存储到IndexFile
+                 * 首先计算条目信息应该存放与IndexFile中的字节位置
+                 */
                 int absIndexPos =
-                    IndexHeader.INDEX_HEADER_SIZE + this.hashSlotNum * hashSlotSize
-                        + this.indexHeader.getIndexCount() * indexSize;
-
+                        IndexHeader.INDEX_HEADER_SIZE + this.hashSlotNum * hashSlotSize
+                                + this.indexHeader.getIndexCount() * indexSize;
+                /**
+                 * 设置Index条目的hashcode、物理偏移量、带存储消息与第一条消息时间戳的差值、当前Hash槽的上一个值
+                 * 治所所存储Index条目的hashcode而不存储具体的key 原因是为了将Index条目设计为定长结构 方便检索与条目定位
+                 */
                 this.mappedByteBuffer.putInt(absIndexPos, keyHash);
                 this.mappedByteBuffer.putLong(absIndexPos + 4, phyOffset);
                 this.mappedByteBuffer.putInt(absIndexPos + 4 + 8, (int) timeDiff);
                 this.mappedByteBuffer.putInt(absIndexPos + 4 + 8 + 4, slotValue);
-
+                /**
+                 * 更新Hash槽 当前key已使用的Index条目数量(最新Index条目的下标)
+                 */
                 this.mappedByteBuffer.putInt(absSlotPos, this.indexHeader.getIndexCount());
 
+                /**
+                 * 更新IndexHead信息
+                 */
                 if (this.indexHeader.getIndexCount() <= 1) {
                     this.indexHeader.setBeginPhyOffset(phyOffset);
                     this.indexHeader.setBeginTimestamp(storeTimestamp);
                 }
-
                 this.indexHeader.incHashSlotCount();
                 this.indexHeader.incIndexCount();
                 this.indexHeader.setEndPhyOffset(phyOffset);
@@ -153,9 +182,12 @@ public class IndexFile {
             }
         } else {
             log.warn("Over index file capacity: index count = " + this.indexHeader.getIndexCount()
-                + "; index max num = " + this.indexNum);
+                    + "; index max num = " + this.indexNum);
         }
-
+        /**
+         * 当前已使用的条目 >= 允许最大条目数 表示索引文件已写满
+         * 直接返回false
+         */
         return false;
     }
 
@@ -186,9 +218,24 @@ public class IndexFile {
         return result;
     }
 
+    /**
+     * 根据索引key查找消息
+     *
+     * @param phyOffsets 查找到消息的物理偏移量
+     * @param key        索引
+     * @param maxNum     本次查找最大消息条数
+     * @param begin      开始时间戳
+     * @param end        结束时间戳
+     * @param lock
+     */
     public void selectPhyOffset(final List<Long> phyOffsets, final String key, final int maxNum,
-        final long begin, final long end, boolean lock) {
+                                final long begin, final long end, boolean lock) {
         if (this.mappedFile.hold()) {
+            /**
+             * 根据key计算出hashcode
+             * 除以槽的数量取余定位到槽下标
+             * 计算槽下标所处的字节位置
+             */
             int keyHash = indexKeyHashMethod(key);
             int slotPos = keyHash % this.hashSlotNum;
             int absSlotPos = IndexHeader.INDEX_HEADER_SIZE + slotPos * hashSlotSize;
@@ -200,49 +247,69 @@ public class IndexFile {
                     // hashSlotSize, true);
                 }
 
+                /**
+                 * 取出当前Hash槽中的数据
+                 */
                 int slotValue = this.mappedByteBuffer.getInt(absSlotPos);
                 // if (fileLock != null) {
                 // fileLock.release();
                 // fileLock = null;
                 // }
-
+                /**
+                 * 如果取出的数据(下标) <= 1 || > 当前已使用Index条目数量 || 当前已使用Index条目数量 <= 1
+                 * 直接返回
+                 */
                 if (slotValue <= invalidIndex || slotValue > this.indexHeader.getIndexCount()
-                    || this.indexHeader.getIndexCount() <= 1) {
+                        || this.indexHeader.getIndexCount() <= 1) {
                 } else {
                     for (int nextIndexToRead = slotValue; ; ) {
                         if (phyOffsets.size() >= maxNum) {
                             break;
                         }
-
+                        /**
+                         * 取出当前Index条目的字节位置
+                         */
                         int absIndexPos =
-                            IndexHeader.INDEX_HEADER_SIZE + this.hashSlotNum * hashSlotSize
-                                + nextIndexToRead * indexSize;
-
+                                IndexHeader.INDEX_HEADER_SIZE + this.hashSlotNum * hashSlotSize
+                                        + nextIndexToRead * indexSize;
+                        /**
+                         * 读取hashcode、phyOffsetRead、timeDiff、prevIndexRead
+                         */
                         int keyHashRead = this.mappedByteBuffer.getInt(absIndexPos);
                         long phyOffsetRead = this.mappedByteBuffer.getLong(absIndexPos + 4);
-
-                        long timeDiff = (long) this.mappedByteBuffer.getInt(absIndexPos + 4 + 8);
+                        long timeDiff = this.mappedByteBuffer.getInt(absIndexPos + 4 + 8);
                         int prevIndexRead = this.mappedByteBuffer.getInt(absIndexPos + 4 + 8 + 4);
-
+                        /**
+                         * 如果存储的时间差 < 0 直接结束
+                         */
                         if (timeDiff < 0) {
                             break;
                         }
-
+                        /**
+                         * 转换成毫秒
+                         */
                         timeDiff *= 1000L;
-
                         long timeRead = this.indexHeader.getBeginTimestamp() + timeDiff;
                         boolean timeMatched = (timeRead >= begin) && (timeRead <= end);
-
+                        /**
+                         * 如果key的hashcode == 当前条目的hashcode && 当前条目的时间介于待查找时间(begin和end)内
+                         * 将当前条目的物理偏移量加入到结果集合
+                         */
                         if (keyHash == keyHashRead && timeMatched) {
                             phyOffsets.add(phyOffsetRead);
                         }
-
+                        /**
+                         * 当前条目的前一个条目下标 <= 0 || > 当前已使用的条目数量 || == 当前条目的下标 || (当前消息条目时间戳 - 起始消息时间戳) + 起始时间戳 < 待查找时间begin
+                         * 直接结束
+                         */
                         if (prevIndexRead <= invalidIndex
-                            || prevIndexRead > this.indexHeader.getIndexCount()
-                            || prevIndexRead == nextIndexToRead || timeRead < begin) {
+                                || prevIndexRead > this.indexHeader.getIndexCount()
+                                || prevIndexRead == nextIndexToRead || timeRead < begin) {
                             break;
                         }
-
+                        /**
+                         * 继续遍历下一条消息
+                         */
                         nextIndexToRead = prevIndexRead;
                     }
                 }
@@ -256,7 +323,6 @@ public class IndexFile {
                         log.error("Failed to release the lock", e);
                     }
                 }
-
                 this.mappedFile.release();
             }
         }

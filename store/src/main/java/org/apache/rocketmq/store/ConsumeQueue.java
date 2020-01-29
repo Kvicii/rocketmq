@@ -576,10 +576,6 @@ public class ConsumeQueue {
         return minLogicOffset;
     }
 
-    public void setMinLogicOffset(long minLogicOffset) {
-        this.minLogicOffset = minLogicOffset;
-    }
-
     /**
      * 获取下一个文件的起始偏移量
      *
@@ -606,10 +602,6 @@ public class ConsumeQueue {
 
     public long getMaxPhysicOffset() {
         return maxPhysicOffset;
-    }
-
-    public void setMaxPhysicOffset(long maxPhysicOffset) {
-        this.maxPhysicOffset = maxPhysicOffset;
     }
 
     public void destroy() {

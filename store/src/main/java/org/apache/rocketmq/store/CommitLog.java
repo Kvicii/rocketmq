@@ -371,7 +371,6 @@ public class CommitLog {
                     keys,
                     uniqKey,
                     sysFlag,
-                    preparedTransactionOffset,
                     propertiesMap
             );
         } catch (Exception e) {
