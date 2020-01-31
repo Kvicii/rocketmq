@@ -206,31 +206,53 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     /**
+     * 文件加载流程
+     *
      * @throws IOException
      */
     public boolean load() {
         boolean result = true;
-
         try {
+            /**
+             * 判断上次退出是否正常
+             * 实现机制为${ROCKET_HOME}/store/abort文件夹是否存在
+             * 正常情况下在RocketMQ退出时会通过钩子函数删除abort文件
+             * 如果下一次启动时存在abort文件夹说明broker是异常退出的 ConsumeQueue和IndexFile的文件可能与CommitLog不一致 需要修复
+             */
             boolean lastExitOK = !this.isTempFileExist();
             log.info("last shutdown {}", lastExitOK ? "normally" : "abnormally");
 
+            /**
+             * 加载延迟队列(与RocketMQ定时消息相关)
+             */
             if (null != scheduleMessageService) {
                 result = result && this.scheduleMessageService.load();
             }
 
-            // load Commit Log
+            /**
+             * load Commit Log
+             * 加载CommitLog文件
+             */
             result = result && this.commitLog.load();
 
-            // load Consume Queue
+            /**
+             * load Consume Queue
+             * 加载ConsumeQueue文件
+             */
             result = result && this.loadConsumeQueue();
-
+            /**
+             * 加载存储监测点
+             */
             if (result) {
                 this.storeCheckpoint =
                         new StoreCheckpoint(StorePathConfigHelper.getStoreCheckpoint(this.messageStoreConfig.getStorePathRootDir()));
-
+                /**
+                 * 加载IndexFile文件
+                 */
                 this.indexService.load(lastExitOK);
-
+                /**
+                 * 根据broker是否正常退出进行不同的恢复策略
+                 */
                 this.recover(lastExitOK);
 
                 log.info("load over, and the max phy offset = {}", this.getMaxPhyOffset());
@@ -243,7 +265,6 @@ public class DefaultMessageStore implements MessageStore {
         if (!result) {
             this.allocateMappedFileService.shutdown();
         }
-
         return result;
     }
 
@@ -1275,6 +1296,11 @@ public class DefaultMessageStore implements MessageStore {
         return file.exists();
     }
 
+    /**
+     * 加载ConsumeQueue
+     *
+     * @return
+     */
     private boolean loadConsumeQueue() {
         File dirLogic = new File(StorePathConfigHelper.getStorePathConsumeQueue(this.messageStoreConfig.getStorePathRootDir()));
         File[] fileTopicList = dirLogic.listFiles();
@@ -1308,19 +1334,31 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         log.info("load logics queue all over, OK");
-
         return true;
     }
 
+    /**
+     * 根据broker是否正常停止执行不同的恢复策略
+     *
+     * @param lastExitOK
+     */
     private void recover(final boolean lastExitOK) {
+        /**
+         * 获取ConsumeQueue最大的物理偏移量
+         */
         long maxPhyOffsetOfConsumeQueue = this.recoverConsumeQueue();
-
+        /**
+         * 正常关闭 调用recoverNormally方法
+         */
         if (lastExitOK) {
             this.commitLog.recoverNormally(maxPhyOffsetOfConsumeQueue);
         } else {
             this.commitLog.recoverAbnormally(maxPhyOffsetOfConsumeQueue);
         }
-
+        /**
+         * 保存每个ConsumeQueue的偏移量
+         * 以topic-queueid为key offset为value
+         */
         this.recoverTopicQueueTable();
     }
 
@@ -1409,7 +1447,16 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 根据CommitLog更新ConsumeQueue实际调用方法
+     *
+     * @param dispatchRequest
+     */
     public void putMessagePositionInfo(DispatchRequest dispatchRequest) {
+        /**
+         * 根据topic和queueId找到ConsumeQueue
+         * 之后进行写入操作
+         */
         ConsumeQueue cq = this.findConsumeQueue(dispatchRequest.getTopic(), dispatchRequest.getQueueId());
         cq.putMessagePositionInfoWrapper(dispatchRequest);
     }

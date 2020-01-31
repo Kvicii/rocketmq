@@ -128,26 +128,48 @@ public class MappedFileQueue {
         return mfs;
     }
 
+    /**
+     * 删除offset之后的所有文件
+     * offset之前的文件更新写指针 提交指针 刷盘指针
+     *
+     * @param offset
+     */
     public void truncateDirtyFiles(long offset) {
         List<MappedFile> willRemoveFiles = new ArrayList<>();
 
         for (MappedFile file : this.mappedFiles) {
+            /**
+             * 文件尾部偏移量
+             */
             long fileTailOffset = file.getFileFromOffset() + this.mappedFileSize;
             if (fileTailOffset > offset) {
                 if (offset >= file.getFileFromOffset()) {
+                    /**
+                     * 说明当前文件包含了有效偏移量
+                     */
                     file.setWrotePosition((int) (offset % this.mappedFileSize));
                     file.setCommittedPosition((int) (offset % this.mappedFileSize));
                     file.setFlushedPosition((int) (offset % this.mappedFileSize));
                 } else {
+                    /**
+                     * 说明是在有效文件之后创建的
+                     */
                     file.destroy(1000);
                     willRemoveFiles.add(file);
                 }
             }
         }
-
+        /**
+         * 将文件从物理磁盘删除
+         */
         this.deleteExpiredFile(willRemoveFiles);
     }
 
+    /**
+     * 将文件从物理磁盘删除
+     *
+     * @param files
+     */
     void deleteExpiredFile(List<MappedFile> files) {
 
         if (!files.isEmpty()) {
@@ -171,6 +193,11 @@ public class MappedFileQueue {
         }
     }
 
+    /**
+     * 加载MappedFile文件
+     *
+     * @return
+     */
     public boolean load() {
         File dir = new File(this.storePath);
         File[] files = dir.listFiles();
@@ -178,16 +205,20 @@ public class MappedFileQueue {
             // ascending order
             Arrays.sort(files);
             for (File file : files) {
-
+                /**
+                 * 如果文件大小与配置的单个文件大小不一致 忽略该目录下所有文件
+                 */
                 if (file.length() != this.mappedFileSize) {
                     log.warn(file + "\t" + file.length()
                             + " length not matched message store config value, please check it manually");
                     return false;
                 }
-
+                /**
+                 * 创建MappedFile文件
+                 * 并将写指针 刷盘指针 提交指针都设置为文件大小
+                 */
                 try {
                     MappedFile mappedFile = new MappedFile(file.getPath(), mappedFileSize);
-
                     mappedFile.setWrotePosition(this.mappedFileSize);
                     mappedFile.setFlushedPosition(this.mappedFileSize);
                     mappedFile.setCommittedPosition(this.mappedFileSize);

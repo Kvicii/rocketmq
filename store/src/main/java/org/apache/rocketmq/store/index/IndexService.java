@@ -16,6 +16,16 @@
  */
 package org.apache.rocketmq.store.index;
 
+import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.common.message.MessageConst;
+import org.apache.rocketmq.common.sysflag.MessageSysFlag;
+import org.apache.rocketmq.logging.InternalLogger;
+import org.apache.rocketmq.logging.InternalLoggerFactory;
+import org.apache.rocketmq.store.DefaultMessageStore;
+import org.apache.rocketmq.store.DispatchRequest;
+import org.apache.rocketmq.store.config.StorePathConfigHelper;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -23,15 +33,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import org.apache.rocketmq.common.UtilAll;
-import org.apache.rocketmq.common.constant.LoggerName;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
-import org.apache.rocketmq.common.message.MessageConst;
-import org.apache.rocketmq.common.sysflag.MessageSysFlag;
-import org.apache.rocketmq.store.DefaultMessageStore;
-import org.apache.rocketmq.store.DispatchRequest;
-import org.apache.rocketmq.store.config.StorePathConfigHelper;
 
 public class IndexService {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -43,7 +44,7 @@ public class IndexService {
     private final int hashSlotNum;
     private final int indexNum;
     private final String storePath;
-    private final ArrayList<IndexFile> indexFileList = new ArrayList<IndexFile>();
+    private final ArrayList<IndexFile> indexFileList = new ArrayList<>();
     private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
     public IndexService(final DefaultMessageStore store) {
@@ -51,7 +52,7 @@ public class IndexService {
         this.hashSlotNum = store.getMessageStoreConfig().getMaxHashSlotNum();
         this.indexNum = store.getMessageStoreConfig().getMaxIndexNum();
         this.storePath =
-            StorePathConfigHelper.getStorePathIndex(store.getMessageStoreConfig().getStorePathRootDir());
+                StorePathConfigHelper.getStorePathIndex(store.getMessageStoreConfig().getStorePathRootDir());
     }
 
     public boolean load(final boolean lastExitOK) {
@@ -64,10 +65,14 @@ public class IndexService {
                 try {
                     IndexFile f = new IndexFile(file.getPath(), this.hashSlotNum, this.indexNum, 0, 0);
                     f.load();
-
+                    /**
+                     * 上一次异常退出
+                     * IndexFile文件消息存储的最大时间戳 > 刷盘时间戳
+                     * 将该IndexFile销毁
+                     */
                     if (!lastExitOK) {
                         if (f.getEndTimestamp() > this.defaultMessageStore.getStoreCheckpoint()
-                            .getIndexMsgTimestamp()) {
+                                .getIndexMsgTimestamp()) {
                             f.destroy(0);
                             continue;
                         }
@@ -83,7 +88,6 @@ public class IndexService {
                 }
             }
         }
-
         return true;
     }
 
@@ -198,13 +202,28 @@ public class IndexService {
         return topic + "#" + key;
     }
 
+    /**
+     * 根据CommitLog更新IndexFile
+     *
+     * @param req
+     */
     public void buildIndex(DispatchRequest req) {
+        /**
+         * 获取/创建IndexFile
+         */
         IndexFile indexFile = retryGetAndCreateIndexFile();
         if (indexFile != null) {
+            /**
+             * 获取该文件包含消息的最大物理偏移量
+             */
             long endPhyOffset = indexFile.getEndPhyOffset();
             DispatchRequest msg = req;
             String topic = msg.getTopic();
             String keys = msg.getKeys();
+            /**
+             * CommitLog文件物理偏移量 < IndexFile文件当前消息的最大物理偏移量
+             * 说明是重复数据 直接放弃本次更新
+             */
             if (msg.getCommitLogOffset() < endPhyOffset) {
                 return;
             }
@@ -218,7 +237,10 @@ public class IndexService {
                 case MessageSysFlag.TRANSACTION_ROLLBACK_TYPE:
                     return;
             }
-
+            /**
+             * 消息的唯一键不为空
+             * 以UniqKey将CommitLog中的数据追加到IndexFile
+             */
             if (req.getUniqKey() != null) {
                 indexFile = putKey(indexFile, msg, buildKey(topic, req.getUniqKey()));
                 if (indexFile == null) {
@@ -226,7 +248,10 @@ public class IndexService {
                     return;
                 }
             }
-
+            /**
+             * 构建索引key 多个key以空格切分
+             * 以索引key再次将CommitLog的数据追加到IndexFile
+             */
             if (keys != null && keys.length() > 0) {
                 String[] keyset = keys.split(MessageConst.KEY_SEPARATOR);
                 for (int i = 0; i < keyset.length; i++) {
@@ -314,11 +339,11 @@ public class IndexService {
         if (indexFile == null) {
             try {
                 String fileName =
-                    this.storePath + File.separator
-                        + UtilAll.timeMillisToHumanString(System.currentTimeMillis());
+                        this.storePath + File.separator
+                                + UtilAll.timeMillisToHumanString(System.currentTimeMillis());
                 indexFile =
-                    new IndexFile(fileName, this.hashSlotNum, this.indexNum, lastUpdateEndPhyOffset,
-                        lastUpdateIndexTimestamp);
+                        new IndexFile(fileName, this.hashSlotNum, this.indexNum, lastUpdateEndPhyOffset,
+                                lastUpdateIndexTimestamp);
                 this.readWriteLock.writeLock().lock();
                 this.indexFileList.add(indexFile);
             } catch (Exception e) {
@@ -329,12 +354,7 @@ public class IndexService {
 
             if (indexFile != null) {
                 final IndexFile flushThisFile = prevIndexFile;
-                Thread flushThread = new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        IndexService.this.flush(flushThisFile);
-                    }
-                }, "FlushIndexFileThread");
+                Thread flushThread = new Thread(() -> IndexService.this.flush(flushThisFile), "FlushIndexFileThread");
 
                 flushThread.setDaemon(true);
                 flushThread.start();

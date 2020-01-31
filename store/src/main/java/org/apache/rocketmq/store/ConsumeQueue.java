@@ -419,6 +419,11 @@ public class ConsumeQueue {
         return this.minLogicOffset / CQ_STORE_UNIT_SIZE;
     }
 
+    /**
+     * 由CommitLog写入ConsumeQueue实际写入方法
+     *
+     * @param request
+     */
     public void putMessagePositionInfoWrapper(DispatchRequest request) {
         final int maxRetries = 30;
         boolean canWrite = this.defaultMessageStore.getRunningFlags().isCQWriteable();
@@ -465,22 +470,37 @@ public class ConsumeQueue {
         this.defaultMessageStore.getRunningFlags().makeLogicsQueueError();
     }
 
+    /**
+     * 由CommitLog写入ConsumeQueue实际写入方法
+     *
+     * @param offset
+     * @param size
+     * @param tagsCode
+     * @param cqOffset
+     * @return
+     */
     private boolean putMessagePositionInfo(final long offset, final int size, final long tagsCode,
                                            final long cqOffset) {
 
         if (offset + size <= this.maxPhysicOffset) {
             log.warn("Maybe try to build consume queue repeatedly maxPhysicOffset={} phyOffset={}", maxPhysicOffset, offset);
             return true;
-        }
 
+        }
+        /**
+         * 将消息长度、消息偏移量、tag hashcode写入到ByteBuffer
+         */
         this.byteBufferIndex.flip();
         this.byteBufferIndex.limit(CQ_STORE_UNIT_SIZE);
         this.byteBufferIndex.putLong(offset);
         this.byteBufferIndex.putInt(size);
         this.byteBufferIndex.putLong(tagsCode);
-
+        /**
+         * 计算ConsumeQueue物理位置
+         * 将内容追加到ConsumeQueue的内存映射文件中(不实际刷到磁盘)
+         * 更新ConsumeQueue的刷盘方式固定为异步刷盘
+         */
         final long expectLogicOffset = cqOffset * CQ_STORE_UNIT_SIZE;
-
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile(expectLogicOffset);
         if (mappedFile != null) {
 
