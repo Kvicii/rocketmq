@@ -1724,6 +1724,9 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 文件检测点(CheckPoint)文件刷盘服务
+     */
     class FlushConsumeQueueService extends ServiceThread {
         private static final int RETRY_TIMES_OVER = 3;
         private long lastFlushTimestamp = 0;
