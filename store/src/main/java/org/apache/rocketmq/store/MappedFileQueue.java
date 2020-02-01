@@ -407,12 +407,21 @@ public class MappedFileQueue {
         }
     }
 
+    /**
+     * 过期文件删除
+     *
+     * @param expiredTime
+     * @param deleteFilesInterval
+     * @param intervalForcibly
+     * @param cleanImmediately
+     * @return
+     */
     public int deleteExpiredFileByTime(final long expiredTime,
                                        final int deleteFilesInterval,
                                        final long intervalForcibly,
                                        final boolean cleanImmediately) {
-        Object[] mfs = this.copyMappedFiles(0);
 
+        Object[] mfs = this.copyMappedFiles(0);
         if (null == mfs)
             return 0;
 
@@ -422,8 +431,15 @@ public class MappedFileQueue {
         if (null != mfs) {
             for (int i = 0; i < mfsLength; i++) {
                 MappedFile mappedFile = (MappedFile) mfs[i];
+                /**
+                 * 计算理论文件过期时间戳
+                 */
                 long liveMaxTimestamp = mappedFile.getLastModifiedTimestamp() + expiredTime;
                 if (System.currentTimeMillis() >= liveMaxTimestamp || cleanImmediately) {
+                    /**
+                     * 当前时间戳 >= 理论过期时间戳 || 需要强制删除文件(磁盘使用超过设定阈值)
+                     * 执行删除操作
+                     */
                     if (mappedFile.destroy(intervalForcibly)) {
                         files.add(mappedFile);
                         deleteCount++;
@@ -431,7 +447,6 @@ public class MappedFileQueue {
                         if (files.size() >= DELETE_FILES_BATCH_MAX) {
                             break;
                         }
-
                         if (deleteFilesInterval > 0 && (i + 1) < mfsLength) {
                             try {
                                 Thread.sleep(deleteFilesInterval);
@@ -442,14 +457,15 @@ public class MappedFileQueue {
                         break;
                     }
                 } else {
-                    //avoid deleting files in the middle
+                    // avoid deleting files in the middle
                     break;
                 }
             }
         }
-
+        /**
+         * 物理删除文件方法
+         */
         deleteExpiredFile(files);
-
         return deleteCount;
     }
 
