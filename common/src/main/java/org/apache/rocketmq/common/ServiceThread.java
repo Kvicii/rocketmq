@@ -24,14 +24,19 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public abstract class ServiceThread implements Runnable {
+
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
 
     private static final long JOIN_TIME = 90 * 1000;
 
     private Thread thread;
+
     protected final CountDownLatch2 waitPoint = new CountDownLatch2(1);
+
     protected volatile AtomicBoolean hasNotified = new AtomicBoolean(false);
+
     protected volatile boolean stopped = false;
+
     protected boolean isDaemon = false;
 
     //Make it able to restart the thread

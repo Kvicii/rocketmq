@@ -16,33 +16,45 @@
  */
 package org.apache.rocketmq.client.impl.consumer;
 
+import org.apache.rocketmq.client.impl.factory.MQClientInstance;
+import org.apache.rocketmq.client.log.ClientLogger;
+import org.apache.rocketmq.common.ServiceThread;
+import org.apache.rocketmq.common.utils.ThreadUtils;
+import org.apache.rocketmq.logging.InternalLogger;
+
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
-import org.apache.rocketmq.client.impl.factory.MQClientInstance;
-import org.apache.rocketmq.client.log.ClientLogger;
-import org.apache.rocketmq.common.ServiceThread;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.common.utils.ThreadUtils;
 
 public class PullMessageService extends ServiceThread {
+
     private final InternalLogger log = ClientLogger.getLog();
+
     private final LinkedBlockingQueue<PullRequest> pullRequestQueue = new LinkedBlockingQueue<PullRequest>();
+
     private final MQClientInstance mQClientFactory;
+
     private final ScheduledExecutorService scheduledExecutorService = Executors
-        .newSingleThreadScheduledExecutor(new ThreadFactory() {
-            @Override
-            public Thread newThread(Runnable r) {
-                return new Thread(r, "PullMessageServiceScheduledThread");
-            }
-        });
+            .newSingleThreadScheduledExecutor(new ThreadFactory() {
+                @Override
+                public Thread newThread(Runnable r) {
+                    return new Thread(r, "PullMessageServiceScheduledThread");
+                }
+            });
 
     public PullMessageService(MQClientInstance mQClientFactory) {
         this.mQClientFactory = mQClientFactory;
     }
 
+    /**
+     * 将PULL消息的任务放到 LinkedBlockingQueue
+     * 延迟添加
+     *
+     * @param pullRequest
+     * @param timeDelay
+     */
     public void executePullRequestLater(final PullRequest pullRequest, final long timeDelay) {
         if (!isStopped()) {
             this.scheduledExecutorService.schedule(new Runnable() {
@@ -56,6 +68,12 @@ public class PullMessageService extends ServiceThread {
         }
     }
 
+    /**
+     * 将PULL消息的任务放到 LinkedBlockingQueue
+     * 立即添加
+     *
+     * @param pullRequest
+     */
     public void executePullRequestImmediately(final PullRequest pullRequest) {
         try {
             this.pullRequestQueue.put(pullRequest);
@@ -76,6 +94,12 @@ public class PullMessageService extends ServiceThread {
         return scheduledExecutorService;
     }
 
+    /**
+     * 该方法只为PUSH模式服务
+     * PULL模式 RocketMQ提供了拉取消息API
+     *
+     * @param pullRequest
+     */
     private void pullMessage(final PullRequest pullRequest) {
         final MQConsumerInner consumer = this.mQClientFactory.selectConsumer(pullRequest.getConsumerGroup());
         if (consumer != null) {
@@ -92,6 +116,10 @@ public class PullMessageService extends ServiceThread {
 
         while (!this.isStopped()) {
             try {
+                /**
+                 * 从LinkedBlockingQueue中取出任务 如果为空 线程阻塞
+                 * 调用 pullMessage 消息拉取
+                 */
                 PullRequest pullRequest = this.pullRequestQueue.take();
                 this.pullMessage(pullRequest);
             } catch (InterruptedException ignored) {
@@ -113,5 +141,4 @@ public class PullMessageService extends ServiceThread {
     public String getServiceName() {
         return PullMessageService.class.getSimpleName();
     }
-
 }

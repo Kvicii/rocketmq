@@ -251,7 +251,10 @@ public class MQClientInstance {
                     this.mQClientAPIImpl.start();
                     // Start various schedule tasks
                     this.startScheduledTask();
-                    // Start pull service
+                    /**
+                     * Start pull service
+                     * 启动消费者PULL消息服务
+                     */
                     this.pullMessageService.start();
                     // Start rebalance service
                     this.rebalanceService.start();

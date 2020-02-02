@@ -16,7 +16,6 @@
  */
 package org.apache.rocketmq.client.consumer;
 
-import java.util.Set;
 import org.apache.rocketmq.client.MQAdmin;
 import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.client.exception.MQClientException;
@@ -24,28 +23,47 @@ import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.exception.RemotingException;
 
+import java.util.Set;
+
 /**
  * Message queue consumer interface
  */
 public interface MQConsumer extends MQAdmin {
+
     /**
-     * If consuming failure,message will be send back to the brokers,and delay consuming some time
+     * If consuming failure, message will be send back to the brokers, and delay consuming some time
+     *
+     * @param msg
+     * @param delayLevel
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     * @throws MQClientException
      */
     @Deprecated
     void sendMessageBack(final MessageExt msg, final int delayLevel) throws RemotingException,
-        MQBrokerException, InterruptedException, MQClientException;
+            MQBrokerException, InterruptedException, MQClientException;
 
     /**
-     * If consuming failure,message will be send back to the broker,and delay consuming some time
+     * If consuming failure, message will be send back to the broker, and delay consuming some time
+     * 发送消息ACK确认
+     *
+     * @param msg        消息
+     * @param delayLevel 消息延迟级别
+     * @param brokerName
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     * @throws MQClientException
      */
     void sendMessageBack(final MessageExt msg, final int delayLevel, final String brokerName)
-        throws RemotingException, MQBrokerException, InterruptedException, MQClientException;
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException;
 
     /**
      * Fetch message queues from consumer cache according to the topic
+     * 获取消费者对topic分配了哪些ConsumeQueue
      *
      * @param topic message topic
-     * @return queue set
      */
     Set<MessageQueue> fetchSubscribeMessageQueues(final String topic) throws MQClientException;
 }
