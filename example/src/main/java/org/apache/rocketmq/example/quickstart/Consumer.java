@@ -16,9 +16,7 @@
  */
 package org.apache.rocketmq.example.quickstart;
 
-import java.util.List;
 import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
-import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyContext;
 import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
 import org.apache.rocketmq.client.consumer.listener.MessageListenerConcurrently;
 import org.apache.rocketmq.client.exception.MQClientException;
@@ -35,7 +33,9 @@ public class Consumer {
         /*
          * Instantiate with specified consumer group name.
          */
-        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("please_rename_unique_group_name");
+//        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("please_rename_unique_group_name");
+//        开启消费端消息轨迹
+        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("please_rename_unique_group_name", true);
 
         /*
          * Specify name server addresses.
@@ -59,20 +59,39 @@ public class Consumer {
          * Subscribe one more more topics to consume.
          */
         consumer.subscribe("TopicTest", "*");
+//        consumer.subscribe("TopicTest", "TagA || TagB");
+//        consumer.subscribe("TopicTest", MessageSelector.bySql("a < 1"));
 
         /*
          *  Register callback to execute on arrival of messages fetched from brokers.
          */
         consumer.registerMessageListener((MessageListenerConcurrently) (msgs, context) -> {
-            System.out.printf("%s Receive New Messages: %s %n", Thread.currentThread().getName(), msgs);
-            return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+            for (MessageExt msg : msgs) {
+                System.out.printf("Receive New Messages: Thread:%s, msg:%s, time:%s", Thread.currentThread().getName(), msg, System.currentTimeMillis() - msg.getStoreTimestamp() + "ms later");
+                return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+            }
+            return ConsumeConcurrentlyStatus.RECONSUME_LATER;
         });
+
+//        接收顺序消息
+//        consumer.registerMessageListener((MessageListenerOrderly) (msgs, context) -> {
+//            context.setAutoCommit(true);
+//            try {
+//                for (int i = 0; i < msgs.size(); i++) {
+//                    System.out.printf("%s Receive New Messages: %s %n", Thread.currentThread().getName(), msgs.get(i));
+//                    return ConsumeOrderlyStatus.SUCCESS;
+//                }
+//            } catch (Exception e) {
+
+//                return ConsumeOrderlyStatus.SUSPEND_CURRENT_QUEUE_A_MOMENT;
+//            }
+//            return ConsumeOrderlyStatus.SUCCESS;
+//        });
 
         /*
          *  Launch the consumer instance.
          */
         consumer.start();
-
         System.out.printf("Consumer Started.%n");
     }
 }

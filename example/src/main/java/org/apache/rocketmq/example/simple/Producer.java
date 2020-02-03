@@ -23,7 +23,7 @@ import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 
 public class Producer {
-    public static void main(String[] args) throws MQClientException, InterruptedException {
+    public static void main(String[] args) throws MQClientException {
 
         DefaultMQProducer producer = new DefaultMQProducer("ProducerGroupName");
         producer.start();
