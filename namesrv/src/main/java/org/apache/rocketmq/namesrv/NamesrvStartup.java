@@ -71,7 +71,7 @@ public class NamesrvStartup {
 
     public static NamesrvController createNamesrvController(String[] args) throws IOException, JoranException {
         System.setProperty(RemotingCommand.REMOTING_VERSION_KEY, Integer.toString(MQVersion.CURRENT_VERSION));
-        //PackageConflictDetect.detectFastjson();
+        // PackageConflictDetect.detectFastjson();
 
         Options options = ServerUtil.buildCommandlineOptions(new Options());
         commandLine = ServerUtil.parseCmdLine("mqnamesrv", args, buildCommandlineOptions(options), new PosixParser());
@@ -81,54 +81,75 @@ public class NamesrvStartup {
         }
 
         /**
-         * Step1.
          * 构造namesrvConfig nettyServerConfig
          * 填充namesrvConfig nettyServerConfig属性值
          */
         final NamesrvConfig namesrvConfig = new NamesrvConfig();
         final NettyServerConfig nettyServerConfig = new NettyServerConfig();
+        /**
+         * netty监听端口9876 接收broker和客户端的网络请求
+         */
         nettyServerConfig.setListenPort(9876);
+        /**
+         * 启动rocketmq时加上 -c 选项 后面会带上一个配置文件的地址 进而去解析文件中的内容
+         */
         if (commandLine.hasOption('c')) {
             String file = commandLine.getOptionValue('c');
             if (file != null) {
+                /**
+                 * 从输入流服务配置放到properties中
+                 */
                 InputStream in = new BufferedInputStream(new FileInputStream(file));
                 properties = new Properties();
                 properties.load(in);
+                /**
+                 * 读取配置的内容放到配置类
+                 */
                 MixAll.properties2Object(properties, namesrvConfig);
                 MixAll.properties2Object(properties, nettyServerConfig);
 
                 namesrvConfig.setConfigStorePath(file);
-
                 System.out.printf("load config properties file OK, %s%n", file);
                 in.close();
             }
         }
-
+        /**
+         * 启动rocketmq时加上 -p 选项 print出namesrv的所有配置信息
+         */
         if (commandLine.hasOption('p')) {
             InternalLogger console = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_CONSOLE_NAME);
             MixAll.printObjectProperties(console, namesrvConfig);
             MixAll.printObjectProperties(console, nettyServerConfig);
             System.exit(0);
         }
-
+        /**
+         * mqnamesrv命令行带上的配置选项都读取出来 覆盖到namesrvConfig中
+         */
         MixAll.properties2Object(ServerUtil.commandLine2Properties(commandLine), namesrvConfig);
-
+        /**
+         * 没有ROCKETMQ_HOME 输出异常日志
+         */
         if (null == namesrvConfig.getRocketmqHome()) {
             System.out.printf("Please set the %s variable in your environment to match the location of the RocketMQ installation%n", MixAll.ROCKETMQ_HOME_ENV);
             System.exit(-2);
         }
-
+        /**
+         * Logger Configurator相关信息
+         */
         LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
         JoranConfigurator configurator = new JoranConfigurator();
         configurator.setContext(lc);
         lc.reset();
         configurator.doConfigure(namesrvConfig.getRocketmqHome() + "/conf/logback_namesrv.xml");
-
+        /**
+         * print namesrv所有配置信息
+         */
         log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
-
         MixAll.printObjectProperties(log, namesrvConfig);
         MixAll.printObjectProperties(log, nettyServerConfig);
-
+        /**
+         * 构造NamesrvController组件
+         */
         final NamesrvController controller = new NamesrvController(namesrvConfig, nettyServerConfig);
 
         // remember all configs to prevent discard

@@ -42,7 +42,13 @@ public class NamesrvConfig {
      * namesrv默认配置文件路径(不生效) 如果需要在启动时指定需要使用-c属性
      */
     private String configStorePath = System.getProperty("user.home") + File.separator + "namesrv" + File.separator + "namesrv.properties";
+    /**
+     * 生产环境的名称
+     */
     private String productEnvName = "center";
+    /**
+     * 是否启动了clusterTest测试集群
+     */
     private boolean clusterTest = false;
     /**
      * 是否支持顺序消息
