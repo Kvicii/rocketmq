@@ -80,17 +80,19 @@ public class NamesrvController {
          * 加载KV配置
          */
         this.kvConfigManager.load();
-
         /**
-         * 创建nettyServer网络处理对象
+         * 初始化netty网络服务器
          */
         this.remotingServer = new NettyRemotingServer(this.nettyServerConfig, this.brokerHousekeepingService);
-
+        /**
+         * netty网络服务器的工作线程池
+         */
         this.remotingExecutor =
                 Executors.newFixedThreadPool(nettyServerConfig.getServerWorkerThreads(), new ThreadFactoryImpl("RemotingExecutorThread_"));
-
+        /**
+         * 将netty工作线程池配置到netty网络服务器
+         */
         this.registerProcessor();
-
         /**
          * 创建用于心跳检测的定时任务
          * 1.每隔10s扫描一次broker 移除没有处于激活状态的broker
@@ -138,7 +140,6 @@ public class NamesrvController {
                 log.warn("FileWatchService created error, can't load the certificate dynamically");
             }
         }
-
         return true;
     }
 

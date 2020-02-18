@@ -180,8 +180,8 @@ public class NamesrvStartup {
         }
 
         /**
-         * 注册JVM钩子函数
-         * tips：如果代码中使用了线程池 优雅的关闭方式就是注册一个钩子函数 在JVM进程关闭之前先将线程池关闭 及时释放资源
+         * 注册JVM钩子函数 JVM关闭时会执行shutdown回调函数
+         * 如果代码中使用了线程池 优雅的关闭方式就是注册一个钩子函数 在JVM进程关闭之前先将线程池关闭 及时释放资源
          */
         Runtime.getRuntime().addShutdownHook(new ShutdownHookThread(log, (Callable<Void>) () -> {
             controller.shutdown();
@@ -191,7 +191,6 @@ public class NamesrvStartup {
          * 启动服务器
          */
         controller.start();
-
         return controller;
     }
 
