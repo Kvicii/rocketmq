@@ -175,10 +175,18 @@ public class BrokerController {
             final NettyClientConfig nettyClientConfig,
             final MessageStoreConfig messageStoreConfig
     ) {
+        /**
+         * 填充核心配置类
+         */
         this.brokerConfig = brokerConfig;
         this.nettyServerConfig = nettyServerConfig;
         this.nettyClientConfig = nettyClientConfig;
         this.messageStoreConfig = messageStoreConfig;
+        /**
+         * 初始化核心配置组件
+         * consumerOffsetManager-->管理消息消费offset
+         * pullMessageProcessor-->consumer请求消息拉取管理
+         */
         this.consumerOffsetManager = new ConsumerOffsetManager(this);
         this.topicConfigManager = new TopicConfigManager(this);
         this.pullMessageProcessor = new PullMessageProcessor(this);
@@ -193,9 +201,10 @@ public class BrokerController {
         this.subscriptionGroupManager = new SubscriptionGroupManager(this);
         this.brokerOuterAPI = new BrokerOuterAPI(nettyClientConfig);
         this.filterServerManager = new FilterServerManager(this);
-
         this.slaveSynchronize = new SlaveSynchronize(this);
-
+        /**
+         * 实现上述组件功能的后台线程池 实际是由这些线程池处理
+         */
         this.sendThreadPoolQueue = new LinkedBlockingQueue<>(this.brokerConfig.getSendThreadPoolQueueCapacity());
         this.pullThreadPoolQueue = new LinkedBlockingQueue<>(this.brokerConfig.getPullThreadPoolQueueCapacity());
         this.replyThreadPoolQueue = new LinkedBlockingQueue<>(this.brokerConfig.getReplyThreadPoolQueueCapacity());
@@ -204,10 +213,11 @@ public class BrokerController {
         this.consumerManagerThreadPoolQueue = new LinkedBlockingQueue<>(this.brokerConfig.getConsumerManagerThreadPoolQueueCapacity());
         this.heartbeatThreadPoolQueue = new LinkedBlockingQueue<>(this.brokerConfig.getHeartbeatThreadPoolQueueCapacity());
         this.endTransactionThreadPoolQueue = new LinkedBlockingQueue<>(this.brokerConfig.getEndTransactionPoolQueueCapacity());
-
+        /**
+         * 统计组件和处理broker故障的组件
+         */
         this.brokerStatsManager = new BrokerStatsManager(this.brokerConfig.getBrokerClusterName());
         this.setStoreHost(new InetSocketAddress(this.getBrokerConfig().getBrokerIP1(), this.getNettyServerConfig().getListenPort()));
-
         this.brokerFastFailure = new BrokerFastFailure(this);
         this.configuration = new Configuration(
                 log,
