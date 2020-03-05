@@ -243,23 +243,27 @@ public class BrokerController {
     }
 
     public boolean initialize() throws CloneNotSupportedException {
-        boolean result = this.topicConfigManager.load();
 
+        // 加载topicConfig consumeOffset consumer订阅组 过滤器 都加载成功结果为true
+        boolean result = this.topicConfigManager.load();
         result = result && this.consumerOffsetManager.load();
         result = result && this.subscriptionGroupManager.load();
         result = result && this.consumerFilterManager.load();
 
         if (result) {
             try {
+                // 创建消息存储组件
                 this.messageStore =
                         new DefaultMessageStore(this.messageStoreConfig, this.brokerStatsManager, this.messageArrivingListener,
                                 this.brokerConfig);
+                // 如果启用了Dleger技术进行主从同步和管理commitlog需要进行对Dleger的相关组件进行初始化
                 if (messageStoreConfig.isEnableDLegerCommitLog()) {
                     DLedgerRoleChangeHandler roleChangeHandler = new DLedgerRoleChangeHandler(this, (DefaultMessageStore) messageStore);
                     ((DLedgerCommitLog) ((DefaultMessageStore) messageStore).getCommitLog()).getdLedgerServer().getdLedgerLeaderElector().addRoleChangeHandler(roleChangeHandler);
                 }
+                // 初始化broker统计组件
                 this.brokerStats = new BrokerStats((DefaultMessageStore) this.messageStore);
-                //load plugin
+                // load plugin
                 MessageStorePluginContext context = new MessageStorePluginContext(messageStoreConfig, brokerStatsManager, messageArrivingListener, brokerConfig);
                 this.messageStore = MessageStoreFactory.build(context, this.messageStore);
                 this.messageStore.getDispatcherList().addFirst(new CommitLogDispatcherCalcBitMap(this.brokerConfig, this.consumerFilterManager));
@@ -268,14 +272,19 @@ public class BrokerController {
                 log.error("Failed to initialize", e);
             }
         }
-
         result = result && this.messageStore.load();
 
         if (result) {
+            // 初始化netty网络服务器
             this.remotingServer = new NettyRemotingServer(this.nettyServerConfig, this.clientHousekeepingService);
             NettyServerConfig fastConfig = (NettyServerConfig) this.nettyServerConfig.clone();
             fastConfig.setListenPort(nettyServerConfig.getListenPort() - 2);
             this.fastRemotingServer = new NettyRemotingServer(fastConfig, this.clientHousekeepingService);
+
+            /**
+             * 初始化各类线程池及后台定时任务
+             */
+            // 处理消息发送过来的线程池
             this.sendMessageExecutor = new BrokerFixedThreadPoolExecutor(
                     this.brokerConfig.getSendMessageThreadPoolNums(),
                     this.brokerConfig.getSendMessageThreadPoolNums(),
@@ -283,7 +292,7 @@ public class BrokerController {
                     TimeUnit.MILLISECONDS,
                     this.sendThreadPoolQueue,
                     new ThreadFactoryImpl("SendMessageThread_"));
-
+            // consumer消息拉取线程池
             this.pullMessageExecutor = new BrokerFixedThreadPoolExecutor(
                     this.brokerConfig.getPullMessageThreadPoolNums(),
                     this.brokerConfig.getPullMessageThreadPoolNums(),
@@ -291,7 +300,7 @@ public class BrokerController {
                     TimeUnit.MILLISECONDS,
                     this.pullThreadPoolQueue,
                     new ThreadFactoryImpl("PullMessageThread_"));
-
+            // 回复消息线程池
             this.replyMessageExecutor = new BrokerFixedThreadPoolExecutor(
                     this.brokerConfig.getProcessReplyMessageThreadPoolNums(),
                     this.brokerConfig.getProcessReplyMessageThreadPoolNums(),
@@ -299,7 +308,7 @@ public class BrokerController {
                     TimeUnit.MILLISECONDS,
                     this.replyThreadPoolQueue,
                     new ThreadFactoryImpl("ProcessReplyMessageThread_"));
-
+            // 消息查询线程池
             this.queryMessageExecutor = new BrokerFixedThreadPoolExecutor(
                     this.brokerConfig.getQueryMessageThreadPoolNums(),
                     this.brokerConfig.getQueryMessageThreadPoolNums(),
@@ -307,11 +316,11 @@ public class BrokerController {
                     TimeUnit.MILLISECONDS,
                     this.queryThreadPoolQueue,
                     new ThreadFactoryImpl("QueryMessageThread_"));
-
+            // 管理broker命令执行线程池
             this.adminBrokerExecutor =
                     Executors.newFixedThreadPool(this.brokerConfig.getAdminBrokerThreadPoolNums(), new ThreadFactoryImpl(
                             "AdminBrokerThread_"));
-
+            // 管理客户端线程池
             this.clientManageExecutor = new ThreadPoolExecutor(
                     this.brokerConfig.getClientManageThreadPoolNums(),
                     this.brokerConfig.getClientManageThreadPoolNums(),
@@ -319,7 +328,7 @@ public class BrokerController {
                     TimeUnit.MILLISECONDS,
                     this.clientManagerThreadPoolQueue,
                     new ThreadFactoryImpl("ClientManageThread_"));
-
+            // 负责给namesrv发送心跳消息的线程池
             this.heartbeatExecutor = new BrokerFixedThreadPoolExecutor(
                     this.brokerConfig.getHeartbeatThreadPoolNums(),
                     this.brokerConfig.getHeartbeatThreadPoolNums(),
@@ -327,7 +336,7 @@ public class BrokerController {
                     TimeUnit.MILLISECONDS,
                     this.heartbeatThreadPoolQueue,
                     new ThreadFactoryImpl("HeartbeatThread_", true));
-
+            // 结束事务线程池
             this.endTransactionExecutor = new BrokerFixedThreadPoolExecutor(
                     this.brokerConfig.getEndTransactionThreadPoolNums(),
                     this.brokerConfig.getEndTransactionThreadPoolNums(),
@@ -335,37 +344,33 @@ public class BrokerController {
                     TimeUnit.MILLISECONDS,
                     this.endTransactionThreadPoolQueue,
                     new ThreadFactoryImpl("EndTransactionThread_"));
-
+            // 管理消费端线程池
             this.consumerManageExecutor =
                     Executors.newFixedThreadPool(this.brokerConfig.getConsumerManageThreadPoolNums(), new ThreadFactoryImpl(
                             "ConsumerManageThread_"));
-
             this.registerProcessor();
-
+            /**
+             * 定时调度的后台线程
+             */
             final long initialDelay = UtilAll.computeNextMorningTimeMillis() - System.currentTimeMillis();
             final long period = 1000 * 60 * 60 * 24;
-            this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        BrokerController.this.getBrokerStats().record();
-                    } catch (Throwable e) {
-                        log.error("schedule record error.", e);
-                    }
+            // broker的定时统计任务
+            this.scheduledExecutorService.scheduleAtFixedRate(() -> {
+                try {
+                    BrokerController.this.getBrokerStats().record();
+                } catch (Throwable e) {
+                    log.error("schedule record error.", e);
                 }
             }, initialDelay, period, TimeUnit.MILLISECONDS);
-
-            this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        BrokerController.this.consumerOffsetManager.persist();
-                    } catch (Throwable e) {
-                        log.error("schedule persist consumerOffset error.", e);
-                    }
+            // consumer消费 offset持久化到磁盘的定时任务
+            this.scheduledExecutorService.scheduleAtFixedRate(() -> {
+                try {
+                    BrokerController.this.consumerOffsetManager.persist();
+                } catch (Throwable e) {
+                    log.error("schedule persist consumerOffset error.", e);
                 }
             }, 1000 * 10, this.brokerConfig.getFlushConsumerOffsetInterval(), TimeUnit.MILLISECONDS);
-
+            // 对consumer filter过滤器定时持久化的任务
             this.scheduledExecutorService.scheduleAtFixedRate(() -> {
                 try {
                     BrokerController.this.consumerFilterManager.persist();
@@ -373,7 +378,7 @@ public class BrokerController {
                     log.error("schedule persist consumer filter error.", e);
                 }
             }, 1000 * 10, 1000 * 10, TimeUnit.MILLISECONDS);
-
+            // broker的定时保护任务
             this.scheduledExecutorService.scheduleAtFixedRate(() -> {
                 try {
                     BrokerController.this.protectBroker();
@@ -381,7 +386,7 @@ public class BrokerController {
                     log.error("protectBroker error.", e);
                 }
             }, 3, 3, TimeUnit.MINUTES);
-
+            // 定时打印水位任务
             this.scheduledExecutorService.scheduleAtFixedRate(() -> {
                 try {
                     BrokerController.this.printWaterMark();
@@ -389,7 +394,7 @@ public class BrokerController {
                     log.error("printWaterMark error.", e);
                 }
             }, 10, 1, TimeUnit.SECONDS);
-
+            // 落后的commitlog定时分发的任务
             this.scheduledExecutorService.scheduleAtFixedRate(() -> {
                 try {
                     log.info("dispatch behind commit log {} bytes", BrokerController.this.getMessageStore().dispatchBehindBytes());
@@ -397,7 +402,7 @@ public class BrokerController {
                     log.error("schedule dispatchBehindBytes error.", e);
                 }
             }, 1000 * 10, 1000 * 60, TimeUnit.MILLISECONDS);
-
+            // 设置namesrv地址列表 支持不通过配置的方式写入namesrv地址 还可以发送请求去加载地址
             if (this.brokerConfig.getNamesrvAddr() != null) {
                 this.brokerOuterAPI.updateNameServerAddressList(this.brokerConfig.getNamesrvAddr());
                 log.info("Set user specified name server address: {}", this.brokerConfig.getNamesrvAddr());
@@ -410,7 +415,7 @@ public class BrokerController {
                     }
                 }, 1000 * 10, 1000 * 60 * 2, TimeUnit.MILLISECONDS);
             }
-
+            // 如果开启了Dleger做一些相关操作
             if (!messageStoreConfig.isEnableDLegerCommitLog()) {
                 if (BrokerRole.SLAVE == this.messageStoreConfig.getBrokerRole()) {
                     if (this.messageStoreConfig.getHaMasterAddress() != null && this.messageStoreConfig.getHaMasterAddress().length() >= 6) {
@@ -470,8 +475,11 @@ public class BrokerController {
                     log.warn("FileWatchService created error, can't load the certificate dynamically");
                 }
             }
+            // 初始化事务相关的一些操作
             initialTransaction();
+            // 初始化ACL权限控制相关的东西
             initialAcl();
+            // 初始化RPC钩子
             initialRpcHooks();
         }
         return result;
@@ -845,22 +853,22 @@ public class BrokerController {
      * @throws Exception
      */
     public void start() throws Exception {
+        // 启动消息存储组件
         if (this.messageStore != null) {
             this.messageStore.start();
         }
-
+        // 启动netty网络服务器
         if (this.remotingServer != null) {
             this.remotingServer.start();
         }
-
         if (this.fastRemotingServer != null) {
             this.fastRemotingServer.start();
         }
-
+        // 启动跟文件相关的一个组件
         if (this.fileWatchService != null) {
             this.fileWatchService.start();
         }
-
+        // brokerOuterAPI是十分钟重要的组件 这个组件实际上是broker通过netty客户端发送请求出去给别的组件
         if (this.brokerOuterAPI != null) {
             this.brokerOuterAPI.start();
         }
@@ -901,8 +909,6 @@ public class BrokerController {
         if (this.brokerFastFailure != null) {
             this.brokerFastFailure.start();
         }
-
-
     }
 
     public synchronized void registerIncrementBrokerData(TopicConfig topicConfig, DataVersion dataVersion) {
@@ -931,6 +937,7 @@ public class BrokerController {
      * @param forceRegister
      */
     public synchronized void registerBrokerAll(final boolean checkOrderConfig, boolean oneway, boolean forceRegister) {
+
         TopicConfigSerializeWrapper topicConfigWrapper = this.getTopicConfigManager().buildTopicConfigSerializeWrapper();
 
         if (!PermName.isWriteable(this.getBrokerConfig().getBrokerPermission())
@@ -944,7 +951,7 @@ public class BrokerController {
             }
             topicConfigWrapper.setTopicConfigTable(topicConfigTable);
         }
-
+        // 如果需要注册再调用doRegisterBrokerAll真正去注册
         if (forceRegister || needRegister(this.brokerConfig.getBrokerClusterName(),
                 this.getBrokerAddr(),
                 this.brokerConfig.getBrokerName(),
@@ -954,19 +961,19 @@ public class BrokerController {
         }
     }
 
-    private void doRegisterBrokerAll(boolean checkOrderConfig, boolean oneway,
-                                     TopicConfigSerializeWrapper topicConfigWrapper) {
-        List<RegisterBrokerResult> registerBrokerResultList = this.brokerOuterAPI.registerBrokerAll(
-                this.brokerConfig.getBrokerClusterName(),
-                this.getBrokerAddr(),
-                this.brokerConfig.getBrokerName(),
-                this.brokerConfig.getBrokerId(),
-                this.getHAServerAddr(),
-                topicConfigWrapper,
-                this.filterServerManager.buildNewFilterServerList(),
-                oneway,
-                this.brokerConfig.getRegisterBrokerTimeoutMills(),
-                this.brokerConfig.isCompressedRegister());
+    private void doRegisterBrokerAll(boolean checkOrderConfig, boolean oneway, TopicConfigSerializeWrapper topicConfigWrapper) {
+
+        // 调用registerBrokerAll进行注册 将broker注册到所有的namesrv 所以返回的是List
+        List<RegisterBrokerResult> registerBrokerResultList = this.brokerOuterAPI
+                .registerBrokerAll(this.brokerConfig.getBrokerClusterName(), this.getBrokerAddr(),
+                        this.brokerConfig.getBrokerName(),
+                        this.brokerConfig.getBrokerId(),
+                        this.getHAServerAddr(),
+                        topicConfigWrapper,
+                        this.filterServerManager.buildNewFilterServerList(),
+                        oneway,
+                        this.brokerConfig.getRegisterBrokerTimeoutMills(),
+                        this.brokerConfig.isCompressedRegister());
 
         if (registerBrokerResultList.size() > 0) {
             RegisterBrokerResult registerBrokerResult = registerBrokerResultList.get(0);
@@ -974,9 +981,7 @@ public class BrokerController {
                 if (this.updateMasterHAServerAddrPeriodically && registerBrokerResult.getHaServerAddr() != null) {
                     this.messageStore.updateHaMasterAddress(registerBrokerResult.getHaServerAddr());
                 }
-
                 this.slaveSynchronize.setMasterAddr(registerBrokerResult.getMasterAddr());
-
                 if (checkOrderConfig) {
                     this.getTopicConfigManager().updateOrderTopicConfig(registerBrokerResult.getKvTable());
                 }

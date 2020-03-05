@@ -32,8 +32,8 @@ public class TopicConfigSerializeWrapper extends RemotingSerializable {
     /**
      * 存储了一些broker启动时默认的一些topic
      */
-    private ConcurrentMap<String, TopicConfig> topicConfigTable =
-            new ConcurrentHashMap<String, TopicConfig>();
+    private ConcurrentMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap<String, TopicConfig>();
+
     private DataVersion dataVersion = new DataVersion();
 
     public ConcurrentMap<String, TopicConfig> getTopicConfigTable() {

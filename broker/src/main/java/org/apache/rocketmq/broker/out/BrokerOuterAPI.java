@@ -65,7 +65,7 @@ public class BrokerOuterAPI {
     private final TopAddressing topAddressing = new TopAddressing(MixAll.getWSAddr());
     private String nameSrvAddr = null;
     private BrokerFixedThreadPoolExecutor brokerOuterExecutor = new BrokerFixedThreadPoolExecutor(4, 10, 1, TimeUnit.MINUTES,
-            new ArrayBlockingQueue<Runnable>(32), new ThreadFactoryImpl("brokerOutApi_thread_", true));
+            new ArrayBlockingQueue<>(32), new ThreadFactoryImpl("brokerOutApi_thread_", true));
 
     public BrokerOuterAPI(final NettyClientConfig nettyClientConfig) {
         this(nettyClientConfig, null);
@@ -127,62 +127,43 @@ public class BrokerOuterAPI {
      * @param compressed
      * @return
      */
-    public List<RegisterBrokerResult> registerBrokerAll(
-            final String clusterName,
-            final String brokerAddr,
-            final String brokerName,
-            final long brokerId,
-            final String haServerAddr,
-            final TopicConfigSerializeWrapper topicConfigWrapper,
-            final List<String> filterServerList,
-            final boolean oneway,
-            final int timeoutMills,
-            final boolean compressed) {
+    public List<RegisterBrokerResult> registerBrokerAll(final String clusterName, final String brokerAddr, final String brokerName,
+                                                        final long brokerId, final String haServerAddr,
+                                                        final TopicConfigSerializeWrapper topicConfigWrapper, final List<String> filterServerList,
+                                                        final boolean oneway, final int timeoutMills, final boolean compressed) {
 
+        // 存放每个namesrv的注册结果
         final List<RegisterBrokerResult> registerBrokerResultList = Lists.newArrayList();
         List<String> nameServerAddressList = this.remotingClient.getNameServerAddressList();
+
         if (nameServerAddressList != null && nameServerAddressList.size() > 0) {
 
-            /**
-             * 封装请求包头
-             */
+            // 封装请求头
             final RegisterBrokerRequestHeader requestHeader = new RegisterBrokerRequestHeader();
-            /**
-             * broker地址
-             */
+            // broker地址
             requestHeader.setBrokerAddr(brokerAddr);
-            /**
-             * brokerId
-             * = 0：mater
-             * > 0：slave
-             */
+
+            // brokerId 0：mater > 0：slave
             requestHeader.setBrokerId(brokerId);
-            /**
-             * broker名称
-             */
+            // broker名称
             requestHeader.setBrokerName(brokerName);
-            /**
-             * 集群名称
-             */
+            // 集群名称
             requestHeader.setClusterName(clusterName);
-            /**
-             * master地址 初次请求为空 slave向namesrv注册后返回
-             */
+            // master地址 初次请求为空 slave向namesrv注册后返回
             requestHeader.setHaServerAddr(haServerAddr);
             requestHeader.setCompressed(compressed);
 
+            // 封装请求体
             RegisterBrokerBody requestBody = new RegisterBrokerBody();
-            /**
-             * topic配置
-             */
+            // topic配置
             requestBody.setTopicConfigSerializeWrapper(topicConfigWrapper);
-            /**
-             * 消息过滤服务器列表
-             */
+            // 消息过滤服务器列表
             requestBody.setFilterServerList(filterServerList);
             final byte[] body = requestBody.encode(compressed);
             final int bodyCrc32 = UtilAll.crc32(body);
             requestHeader.setBodyCrc32(bodyCrc32);
+
+            // 阻塞 需要等待所有的namesrv注册完之后再执行
             final CountDownLatch countDownLatch = new CountDownLatch(nameServerAddressList.size());
             for (final String namesrvAddr : nameServerAddressList) {
                 // 遍历所有namesrv并向每个namesrv注册
@@ -201,31 +182,25 @@ public class BrokerOuterAPI {
                     }
                 });
             }
-
             try {
                 countDownLatch.await(timeoutMills, TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
             }
         }
-
         return registerBrokerResultList;
     }
 
-    private RegisterBrokerResult registerBroker(
-            final String namesrvAddr,
-            final boolean oneway,
-            final int timeoutMills,
-            final RegisterBrokerRequestHeader requestHeader,
-            final byte[] body
-    ) throws RemotingCommandException, MQBrokerException, RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException,
-            InterruptedException {
+    private RegisterBrokerResult registerBroker(final String namesrvAddr, final boolean oneway,
+                                                final int timeoutMills, final RegisterBrokerRequestHeader requestHeader,
+                                                final byte[] body) throws RemotingCommandException, MQBrokerException,
+            RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, InterruptedException {
         /**
          * 每次broker向namesrv发送心跳包都会定义一个RequestCode
          * 实际在网络处理器中进行相关请求处理
          */
         RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.REGISTER_BROKER, requestHeader);
         request.setBody(body);
-
+        // oneway是特殊情况 不需要等待注册结果
         if (oneway) {
             try {
                 this.remotingClient.invokeOneway(namesrvAddr, request, timeoutMills);
@@ -234,9 +209,10 @@ public class BrokerOuterAPI {
             }
             return null;
         }
-
+        // netty client发送网络请求
         RemotingCommand response = this.remotingClient.invokeSync(namesrvAddr, request, timeoutMills);
         assert response != null;
+        // 处理返回结果 封装RegisterBrokerResult并返回
         switch (response.getCode()) {
             case ResponseCode.SUCCESS: {
                 RegisterBrokerResponseHeader responseHeader =
@@ -252,7 +228,6 @@ public class BrokerOuterAPI {
             default:
                 break;
         }
-
         throw new MQBrokerException(response.getCode(), response.getRemark());
     }
 

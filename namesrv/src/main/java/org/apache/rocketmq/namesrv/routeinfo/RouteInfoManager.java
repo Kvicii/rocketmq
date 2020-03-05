@@ -118,46 +118,35 @@ public class RouteInfoManager {
         return topicList.encode();
     }
 
-    public RegisterBrokerResult registerBroker(
-            final String clusterName,
-            final String brokerAddr,
-            final String brokerName,
-            final long brokerId,
-            final String haServerAddr,
-            final TopicConfigSerializeWrapper topicConfigWrapper,
-            final List<String> filterServerList,
-            final Channel channel) {
+    public RegisterBrokerResult registerBroker(final String clusterName, final String brokerAddr,
+                                               final String brokerName, final long brokerId, final String haServerAddr,
+                                               final TopicConfigSerializeWrapper topicConfigWrapper,
+                                               final List<String> filterServerList, final Channel channel) {
+
         RegisterBrokerResult result = new RegisterBrokerResult();
         try {
             try {
                 this.lock.writeLock().lockInterruptibly();
-
-                /**
-                 * 维护clusterAddrTable
-                 */
+                // 维护clusterAddrTable Set自动去重防止一个broker多次发送心跳接收到重复数据
                 Set<String> brokerNames = this.clusterAddrTable.get(clusterName);
                 if (null == brokerNames) {
                     brokerNames = new HashSet<>();
                     this.clusterAddrTable.put(clusterName, brokerNames);
                 }
                 brokerNames.add(brokerName);
-
-                /**
-                 * false达标并非第一次注册
-                 */
+                // false代表并非第一次注册
                 boolean registerFirst = false;
-                /**
-                 * 维护brokerAddrTable和brokerData
-                 */
+                // 维护brokerAddrTable和brokerData
                 BrokerData brokerData = this.brokerAddrTable.get(brokerName);
                 if (null == brokerData) {
+                    // 首次注册
                     registerFirst = true;
                     brokerData = new BrokerData(clusterName, brokerName, new HashMap<>());
                     this.brokerAddrTable.put(brokerName, brokerData);
                 }
                 Map<Long, String> brokerAddrsMap = brokerData.getBrokerAddrs();
-                //Switch slave to master: first remove <1, IP:PORT> in namesrv, then add <0, IP:PORT>
-                //The same IP:PORT must only have one record in brokerAddrTable
+                // Switch slave to master: first remove <1, IP:PORT> in namesrv, then add <0, IP:PORT>
+                // The same IP:PORT must only have one record in brokerAddrTable
                 Iterator<Entry<Long, String>> it = brokerAddrsMap.entrySet().iterator();
                 while (it.hasNext()) {
                     Entry<Long, String> item = it.next();
@@ -165,16 +154,13 @@ public class RouteInfoManager {
                         it.remove();
                     }
                 }
-
                 String oldAddr = brokerData.getBrokerAddrs().put(brokerId, brokerAddr);
                 registerFirst = registerFirst || (null == oldAddr);
-
                 /**
                  * broker为Master
                  * topic首次注册或者配置信息发生变化
                  */
-                if (null != topicConfigWrapper
-                        && MixAll.MASTER_ID == brokerId) {
+                if (null != topicConfigWrapper && MixAll.MASTER_ID == brokerId) {
                     if (this.isBrokerTopicConfigChanged(brokerAddr, topicConfigWrapper.getDataVersion())
                             || registerFirst) {
                         ConcurrentMap<String, TopicConfig> tcTable =
@@ -191,20 +177,12 @@ public class RouteInfoManager {
                         }
                     }
                 }
-
-                /**
-                 * 更新brokerLiveTable
-                 */
+                // 更新brokerLiveTable 每隔30s broker发送的心跳包封装成一个BrokerLiveInfo放入Map 后一个覆盖前一个
                 BrokerLiveInfo prevBrokerLiveInfo = this.brokerLiveTable.put(brokerAddr,
-                        new BrokerLiveInfo(
-                                System.currentTimeMillis(),
-                                topicConfigWrapper.getDataVersion(),
-                                channel,
-                                haServerAddr));
+                        new BrokerLiveInfo(System.currentTimeMillis(), topicConfigWrapper.getDataVersion(), channel, haServerAddr));
                 if (null == prevBrokerLiveInfo) {
                     log.info("new broker registered, {} HAServer: {}", brokerAddr, haServerAddr);
                 }
-
                 /**
                  * 注册broker的过滤器server地址列表
                  */
@@ -215,7 +193,6 @@ public class RouteInfoManager {
                         this.filterServerTable.put(brokerAddr, filterServerList);
                     }
                 }
-
                 /**
                  * 如果此broker为从节点 需要查找该broker的Master节点信息并更新对应的信息
                  */
@@ -235,7 +212,6 @@ public class RouteInfoManager {
         } catch (Exception e) {
             log.error("registerBroker Exception", e);
         }
-
         return result;
     }
 
@@ -478,20 +454,15 @@ public class RouteInfoManager {
      * namesrv其中的一个定时任务 检测broker心跳
      */
     public void scanNotActiveBroker() {
-        /**
-         * 遍历brokerLiveTable 检测brokerLiveTable的lastUpdateTimestamp
-         */
+
+        // 遍历brokerLiveTable 检测brokerLiveTable的lastUpdateTimestamp
         Iterator<Entry<String, BrokerLiveInfo>> it = this.brokerLiveTable.entrySet().iterator();
         while (it.hasNext()) {
             Entry<String, BrokerLiveInfo> next = it.next();
             long last = next.getValue().getLastUpdateTimestamp();
-            /**
-             * 120s没有收到心跳包 namesrv将移除broker的路由信息并同时关闭socket连接
-             */
+            // 120s没有收到心跳包 namesrv将移除broker的路由信息并同时关闭socket连接
             if ((last + BROKER_CHANNEL_EXPIRED_TIME) < System.currentTimeMillis()) {
-                /**
-                 * 关闭channel 删除与该broker相关的路由信息
-                 */
+                // 关闭channel 删除与该broker相关的路由信息
                 RemotingUtil.closeChannel(next.getValue().getChannel());
                 it.remove();
                 log.warn("The broker channel expired, {} {}ms", next.getKey(), BROKER_CHANNEL_EXPIRED_TIME);

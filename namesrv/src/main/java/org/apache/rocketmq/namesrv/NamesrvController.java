@@ -145,11 +145,12 @@ public class NamesrvController {
 
     private void registerProcessor() {
         if (namesrvConfig.isClusterTest()) {
-
-            this.remotingServer.registerDefaultProcessor(new ClusterTestRequestProcessor(this, namesrvConfig.getProductEnvName()),
-                    this.remotingExecutor);
+            // 用于测试集群
+            this.remotingServer.registerDefaultProcessor(new ClusterTestRequestProcessor(this,
+                    namesrvConfig.getProductEnvName()), this.remotingExecutor);
         } else {
-
+            // 把namesrv的默认请求处理组件(DefaultRequestProcessor)注册进去
+            // 这是注册给了netty server的  netty server收到网络请求都会由这个组件来处理
             this.remotingServer.registerDefaultProcessor(new DefaultRequestProcessor(this), this.remotingExecutor);
         }
     }

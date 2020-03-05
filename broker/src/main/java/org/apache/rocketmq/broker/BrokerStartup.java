@@ -62,14 +62,11 @@ public class BrokerStartup {
         try {
 
             controller.start();
-
             String tip = "The broker[" + controller.getBrokerConfig().getBrokerName() + ", "
                     + controller.getBrokerAddr() + "] boot success. serializeType=" + RemotingCommand.getSerializeTypeConfigInThisServer();
-
             if (null != controller.getBrokerConfig().getNamesrvAddr()) {
                 tip += " and name server is " + controller.getBrokerConfig().getNamesrvAddr();
             }
-
             log.info(tip);
             System.out.printf("%s%n", tip);
             return controller;
@@ -77,7 +74,6 @@ public class BrokerStartup {
             e.printStackTrace();
             System.exit(-1);
         }
-
         return null;
     }
 
@@ -219,13 +215,13 @@ public class BrokerStartup {
                     messageStoreConfig);
             // remember all configs to prevent discard
             controller.getConfiguration().registerConfig(properties);
-
+            // brokerController的初始化
             boolean initResult = controller.initialize();
             if (!initResult) {
                 controller.shutdown();
                 System.exit(-3);
             }
-
+            // JVM进程退出时回调该钩子函数释放资源
             Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
                 private volatile boolean hasShutdown = false;
                 private AtomicInteger shutdownTimes = new AtomicInteger(0);
@@ -244,13 +240,11 @@ public class BrokerStartup {
                     }
                 }
             }, "ShutdownHook"));
-
             return controller;
         } catch (Throwable e) {
             e.printStackTrace();
             System.exit(-1);
         }
-
         return null;
     }
 

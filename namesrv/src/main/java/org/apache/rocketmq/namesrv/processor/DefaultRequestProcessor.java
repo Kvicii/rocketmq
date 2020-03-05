@@ -87,7 +87,7 @@ public class DefaultRequestProcessor implements NettyRequestProcessor {
                     request);
         }
 
-
+        // 根据请求类型有不同的处理过程
         switch (request.getCode()) {
             case RequestCode.PUT_KV_CONFIG:
                 return this.putKVConfig(ctx, request);
@@ -97,11 +97,13 @@ public class DefaultRequestProcessor implements NettyRequestProcessor {
                 return this.deleteKVConfig(ctx, request);
             case RequestCode.QUERY_DATA_VERSION:
                 return queryBrokerTopicConfig(ctx, request);
+            // 注册broker的请求
             case RequestCode.REGISTER_BROKER:
                 Version brokerVersion = MQVersion.value2Version(request.getVersion());
                 if (brokerVersion.ordinal() >= MQVersion.Version.V3_0_11.ordinal()) {
                     return this.registerBrokerWithFilterServer(ctx, request);
                 } else {
+                    // 核心的注册请求处理逻辑
                     return this.registerBroker(ctx, request);
                 }
             case RequestCode.UNREGISTER_BROKER:
@@ -286,6 +288,8 @@ public class DefaultRequestProcessor implements NettyRequestProcessor {
 
     public RemotingCommand registerBroker(ChannelHandlerContext ctx,
                                           RemotingCommand request) throws RemotingCommandException {
+
+        // 解析注册请求 构造返回响应
         final RemotingCommand response = RemotingCommand.createResponseCommand(RegisterBrokerResponseHeader.class);
         final RegisterBrokerResponseHeader responseHeader = (RegisterBrokerResponseHeader) response.readCustomHeader();
         final RegisterBrokerRequestHeader requestHeader =
@@ -305,21 +309,15 @@ public class DefaultRequestProcessor implements NettyRequestProcessor {
             topicConfigWrapper.getDataVersion().setCounter(new AtomicLong(0));
             topicConfigWrapper.getDataVersion().setTimestamp(0);
         }
-
-        RegisterBrokerResult result = this.namesrvController.getRouteInfoManager().registerBroker(
-                requestHeader.getClusterName(),
-                requestHeader.getBrokerAddr(),
-                requestHeader.getBrokerName(),
-                requestHeader.getBrokerId(),
-                requestHeader.getHaServerAddr(),
-                topicConfigWrapper,
-                null,
-                ctx.channel()
+        // 核心 调用RouteInfoManager(路由消息管理组件).registerBroker
+        RegisterBrokerResult result = this.namesrvController.getRouteInfoManager().registerBroker(requestHeader.getClusterName(),
+                requestHeader.getBrokerAddr(), requestHeader.getBrokerName(),
+                requestHeader.getBrokerId(), requestHeader.getHaServerAddr(), topicConfigWrapper,
+                null, ctx.channel()
         );
 
         responseHeader.setHaServerAddr(result.getHaServerAddr());
         responseHeader.setMasterAddr(result.getMasterAddr());
-
         byte[] jsonValue = this.namesrvController.getKvConfigManager().getKVListByNamespace(NamesrvUtil.NAMESPACE_ORDER_TOPIC_CONFIG);
         response.setBody(jsonValue);
         response.setCode(ResponseCode.SUCCESS);
