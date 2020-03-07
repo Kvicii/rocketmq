@@ -26,6 +26,7 @@ import org.apache.rocketmq.broker.client.ClientChannelInfo;
 import org.apache.rocketmq.broker.client.ConsumerGroupInfo;
 import org.apache.rocketmq.broker.filter.ConsumerFilterData;
 import org.apache.rocketmq.broker.filter.ExpressionMessageFilter;
+import org.apache.rocketmq.broker.topic.TopicValidator;
 import org.apache.rocketmq.broker.transaction.queue.TransactionalMessageUtil;
 import org.apache.rocketmq.common.AclConfig;
 import org.apache.rocketmq.common.MQVersion;
@@ -110,6 +111,7 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
+import org.apache.rocketmq.remoting.netty.AsyncNettyRequestProcessor;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
@@ -136,7 +138,8 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 
-public class AdminBrokerProcessor implements NettyRequestProcessor {
+public class AdminBrokerProcessor extends AsyncNettyRequestProcessor implements NettyRequestProcessor {
+
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private final BrokerController brokerController;
 
@@ -270,6 +273,10 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             return response;
         }
 
+        if (!TopicValidator.validateTopic(requestHeader.getTopic(), response)) {
+            return response;
+        }
+
         try {
             response.setCode(ResponseCode.SUCCESS);
             response.setOpaque(request.getOpaque());
@@ -328,8 +335,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         accessConfig.setWhiteRemoteAddress(requestHeader.getWhiteRemoteAddress());
         accessConfig.setDefaultTopicPerm(requestHeader.getDefaultTopicPerm());
         accessConfig.setDefaultGroupPerm(requestHeader.getDefaultGroupPerm());
-        accessConfig.setTopicPerms(UtilAll.String2List(requestHeader.getTopicPerms(), ","));
-        accessConfig.setGroupPerms(UtilAll.String2List(requestHeader.getGroupPerms(), ","));
+        accessConfig.setTopicPerms(UtilAll.string2List(requestHeader.getTopicPerms(), ","));
+        accessConfig.setGroupPerms(UtilAll.string2List(requestHeader.getGroupPerms(), ","));
         accessConfig.setAdmin(requestHeader.isAdmin());
         try {
 
@@ -402,7 +409,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
 
         try {
             AccessValidator accessValidator = this.brokerController.getAccessValidatorMap().get(PlainAccessValidator.class);
-            if (accessValidator.updateGlobalWhiteAddrsConfig(UtilAll.String2List(requestHeader.getGlobalWhiteAddrs(), ","))) {
+            if (accessValidator.updateGlobalWhiteAddrsConfig(UtilAll.string2List(requestHeader.getGlobalWhiteAddrs(), ","))) {
                 response.setCode(ResponseCode.SUCCESS);
                 response.setOpaque(request.getOpaque());
                 response.markResponseType();
@@ -826,7 +833,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
                 (GetProducerConnectionListRequestHeader) request.decodeCommandCustomHeader(GetProducerConnectionListRequestHeader.class);
 
         ProducerConnection bodydata = new ProducerConnection();
-        HashMap<Channel, ClientChannelInfo> channelInfoHashMap =
+        Map<Channel, ClientChannelInfo> channelInfoHashMap =
                 this.brokerController.getProducerManager().getGroupChannelTable().get(requestHeader.getProducerGroup());
         if (channelInfoHashMap != null) {
             Iterator<Map.Entry<Channel, ClientChannelInfo>> it = channelInfoHashMap.entrySet().iterator();
@@ -1504,11 +1511,9 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             response.setRemark(String.format("%d@%s is not exist!", requestHeader.getQueueId(), requestHeader.getTopic()));
             return response;
         }
+        response.setCode(ResponseCode.SUCCESS);
 
         QueryConsumeQueueResponseBody body = new QueryConsumeQueueResponseBody();
-        response.setCode(ResponseCode.SUCCESS);
-        response.setBody(body.encode());
-
         body.setMaxQueueIndex(consumeQueue.getMaxOffsetInQueue());
         body.setMinQueueIndex(consumeQueue.getMinOffsetInQueue());
 
@@ -1567,7 +1572,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         } finally {
             result.release();
         }
-
+        response.setBody(body.encode());
         return response;
     }
 

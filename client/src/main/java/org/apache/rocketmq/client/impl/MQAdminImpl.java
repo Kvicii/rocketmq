@@ -17,6 +17,7 @@
 package org.apache.rocketmq.client.impl;
 
 import org.apache.rocketmq.client.QueryResult;
+import org.apache.rocketmq.client.Validators;
 import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.client.impl.factory.MQClientInstance;
@@ -83,6 +84,7 @@ public class MQAdminImpl {
             /**
              * 一般使用defaultTopic获取已经存在的brokerData 所有的broker都支持默认的defaultTopic
              */
+            Validators.checkTopic(newTopic);
             TopicRouteData topicRouteData = this.mQClientFactory.getMQClientAPIImpl().getTopicRouteInfoFromNameServer(key, timeoutMillis);
             List<BrokerData> brokerDataList = topicRouteData.getBrokerDatas();
             if (brokerDataList != null && !brokerDataList.isEmpty()) {
