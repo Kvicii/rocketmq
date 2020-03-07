@@ -26,6 +26,7 @@ import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 
 public class MessageExt extends Message {
+
     private static final long serialVersionUID = 5720810158625748049L;
 
     private String brokerName;
