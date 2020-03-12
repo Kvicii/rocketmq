@@ -569,18 +569,15 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             final SendCallback sendCallback,
             final long timeout
     ) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
-        /**
-         * 校验MQ状态是否正常
-         */
+
+        // 校验MQ状态是否正常
         this.makeSureStateOK();
         Validators.checkMessage(msg, this.defaultMQProducer);
         final long invokeID = random.nextLong();
         long beginTimestampFirst = System.currentTimeMillis();
         long beginTimestampPrev = beginTimestampFirst;
         long endTimestamp;
-        /**
-         * 查找Topic的路由消息
-         */
+        // 查找Topic的路由数据 检查Topic路由数据是否在本地 不在的话需要发请求到namesrv拉取然后缓存到本地
         TopicPublishInfo topicPublishInfo = this.tryToFindTopicPublishInfo(msg.getTopic());
         if (topicPublishInfo != null && topicPublishInfo.ok()) {
             boolean callTimeout = false;
@@ -718,17 +715,17 @@ public class DefaultMQProducerImpl implements MQProducerInner {
 
     /**
      * 查找Topic的路由信息
+     * 检查本地是否有Topic路由信息 没有发送请求到namesrv拉取 如果有直接返回本地缓存的信息
      *
      * @param topic
      * @return
      */
     private TopicPublishInfo tryToFindTopicPublishInfo(final String topic) {
+
         TopicPublishInfo topicPublishInfo = this.topicPublishInfoTable.get(topic);
         if (null == topicPublishInfo || !topicPublishInfo.ok()) {
             this.topicPublishInfoTable.putIfAbsent(topic, new TopicPublishInfo());
-            /**
-             * 更新和维护路由缓存
-             */
+            // 更新和维护路由缓存
             this.mQClientFactory.updateTopicRouteInfoFromNameServer(topic);
             topicPublishInfo = this.topicPublishInfoTable.get(topic);
         }
@@ -736,9 +733,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         if (topicPublishInfo.isHaveTopicRouterInfo() || topicPublishInfo.ok()) {
             return topicPublishInfo;
         } else {
-            /**
-             * 更新和维护路由缓存
-             */
+            // 更新和维护路由缓存
             this.mQClientFactory.updateTopicRouteInfoFromNameServer(topic, true, this.defaultMQProducer);
             topicPublishInfo = this.topicPublishInfoTable.get(topic);
             return topicPublishInfo;
