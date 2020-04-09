@@ -23,6 +23,7 @@ public enum ConsumeConcurrentlyStatus {
     CONSUME_SUCCESS,
     /**
      * Failure consumption,later try to consume
+     * 消息消费失败进入重试队列(%RETRY% + 消费者组名) 重试16次后仍然无法处理 进入死信队列(%DLQ% + 消费者组名)
      */
-    RECONSUME_LATER;
+    RECONSUME_LATER
 }

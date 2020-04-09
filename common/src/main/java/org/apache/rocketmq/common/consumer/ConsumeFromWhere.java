@@ -20,6 +20,7 @@ public enum ConsumeFromWhere {
 
     /**
      * 从队列当前最大偏移量开始消费
+     * 从Topic的第一条数据开始消费
      */
     CONSUME_FROM_LAST_OFFSET,
 
@@ -33,6 +34,7 @@ public enum ConsumeFromWhere {
     CONSUME_FROM_MAX_OFFSET,
     /**
      * 从队列当前最小偏移量开始消费
+     * 从Topic的最后一次消费过的消息之后开始消费
      */
     CONSUME_FROM_FIRST_OFFSET,
     /**

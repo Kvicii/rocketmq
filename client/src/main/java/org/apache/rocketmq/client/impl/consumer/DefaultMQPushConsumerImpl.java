@@ -586,14 +586,14 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                 if (this.defaultMQPushConsumer.getMessageModel() == MessageModel.CLUSTERING) {
                     this.defaultMQPushConsumer.changeInstanceNameToPID();
                 }
-                /**
-                 * 初始化MQClientInstance RebalanceImpl
-                 */
+                // 初始化MQClientInstance 用于netty网络通信
                 this.mQClientFactory = MQClientManager.getInstance().getOrCreateMQClientInstance(this.defaultMQPushConsumer, this.rpcHook);
+                // 初始化重平衡组件 在Consumer加入/宕机时重新分配每个Consumer消费的ConsumeQueue
                 this.rebalanceImpl.setConsumerGroup(this.defaultMQPushConsumer.getConsumerGroup());
                 this.rebalanceImpl.setMessageModel(this.defaultMQPushConsumer.getMessageModel());
                 this.rebalanceImpl.setAllocateMessageQueueStrategy(this.defaultMQPushConsumer.getAllocateMessageQueueStrategy());
                 this.rebalanceImpl.setmQClientFactory(this.mQClientFactory);
+                // 消息拉取组件
                 this.pullAPIWrapper = new PullAPIWrapper(mQClientFactory, this.defaultMQPushConsumer.getConsumerGroup(), isUnitMode());
                 this.pullAPIWrapper.registerFilterMessageHook(filterMessageHookList);
                 /**
@@ -602,6 +602,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                  * 2.BROADCAST模式：消息消费进度存储在消费端
                  */
                 if (this.defaultMQPushConsumer.getOffsetStore() != null) {
+                    // 消息消费进度组件
                     this.offsetStore = this.defaultMQPushConsumer.getOffsetStore();
                 } else {
                     switch (this.defaultMQPushConsumer.getMessageModel()) {

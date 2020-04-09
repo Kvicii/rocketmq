@@ -34,5 +34,5 @@ public enum ConsumeOrderlyStatus {
     /**
      * Suspend current queue a moment
      */
-    SUSPEND_CURRENT_QUEUE_A_MOMENT;
+    SUSPEND_CURRENT_QUEUE_A_MOMENT
 }
