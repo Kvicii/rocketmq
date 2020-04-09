@@ -278,14 +278,13 @@ public class MappedFile extends ReferenceResource {
         assert cb != null;
 
         int currentPos = this.wrotePosition.get();
-        /**
-         * 如果currentPos < fileSize 通过slice方法创建一个与MappedFile的共享内存区 并设置position为当前指针
-         */
+        // 如果currentPos < fileSize 通过slice方法创建一个与MappedFile的共享内存区 并设置position为当前指针
         if (currentPos < this.fileSize) {
             ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : this.mappedByteBuffer.slice();
             byteBuffer.position(currentPos);
             AppendMessageResult result;
             if (messageExt instanceof MessageExtBrokerInner) {
+                // doAppend方法将消息追加到MappedFile映射的内存中而没有直接刷盘
                 result = cb.doAppend(this.getFileFromOffset(), byteBuffer, this.fileSize - currentPos, (MessageExtBrokerInner) messageExt);
             } else if (messageExt instanceof MessageExtBatch) {
                 result = cb.doAppend(this.getFileFromOffset(), byteBuffer, this.fileSize - currentPos, (MessageExtBatch) messageExt);

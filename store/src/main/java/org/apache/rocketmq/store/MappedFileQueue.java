@@ -416,10 +416,8 @@ public class MappedFileQueue {
      * @param cleanImmediately
      * @return
      */
-    public int deleteExpiredFileByTime(final long expiredTime,
-                                       final int deleteFilesInterval,
-                                       final long intervalForcibly,
-                                       final boolean cleanImmediately) {
+    public int deleteExpiredFileByTime(final long expiredTime, final int deleteFilesInterval,
+                                       final long intervalForcibly, final boolean cleanImmediately) {
 
         Object[] mfs = this.copyMappedFiles(0);
         if (null == mfs)
@@ -431,9 +429,8 @@ public class MappedFileQueue {
         if (null != mfs) {
             for (int i = 0; i < mfsLength; i++) {
                 MappedFile mappedFile = (MappedFile) mfs[i];
-                /**
-                 * 计算理论文件过期时间戳
-                 */
+                // 计算理论文件过期时间戳
+                // 最后一次修改距现在超过72小时执行删除
                 long liveMaxTimestamp = mappedFile.getLastModifiedTimestamp() + expiredTime;
                 if (System.currentTimeMillis() >= liveMaxTimestamp || cleanImmediately) {
                     /**

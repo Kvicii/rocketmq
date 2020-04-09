@@ -105,9 +105,7 @@ public class MQFaultStrategy {
 
             return tpInfo.selectOneMessageQueue();
         }
-        /**
-         * sendLatencyFaultEnable参数未开启(默认)
-         */
+         // sendLatencyFaultEnable参数未开启(默认)
         return tpInfo.selectOneMessageQueue(lastBrokerName);
     }
 

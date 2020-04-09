@@ -19,8 +19,14 @@ package org.apache.rocketmq.store;
 
 /**
  * Dispatcher of commit log.
+ * CommitLog消息转发接口
  */
 public interface CommitLogDispatcher {
 
+    /**
+     * 通过不同的实现将CommitLog中的消息转发到不同的文件(ConsumeQueue和IndexFile)
+     *
+     * @param request
+     */
     void dispatch(final DispatchRequest request);
 }

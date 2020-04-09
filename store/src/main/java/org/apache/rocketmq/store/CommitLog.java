@@ -133,12 +133,8 @@ public class CommitLog {
         return this.mappedFileQueue.remainHowManyDataToFlush();
     }
 
-    public int deleteExpiredFile(
-            final long expiredTime,
-            final int deleteFilesInterval,
-            final long intervalForcibly,
-            final boolean cleanImmediately
-    ) {
+    public int deleteExpiredFile(final long expiredTime, final int deleteFilesInterval,
+                                 final long intervalForcibly, final boolean cleanImmediately) {
         return this.mappedFileQueue.deleteExpiredFileByTime(expiredTime, deleteFilesInterval, intervalForcibly, cleanImmediately);
     }
 
@@ -900,9 +896,7 @@ public class CommitLog {
          */
         putMessageLock.lock(); // spin or ReentrantLock ,depending on store config
         try {
-            /**
-             * 设置消息存储的时间
-             */
+            // 设置消息存储的时间
             long beginLockTimestamp = this.defaultMessageStore.getSystemClock().now();
             this.beginTimeInLock = beginLockTimestamp;
 
@@ -916,17 +910,14 @@ public class CommitLog {
             if (null == mappedFile || mappedFile.isFull()) {
                 mappedFile = this.mappedFileQueue.getLastMappedFile(0); // Mark: NewFile may be cause noise
             }
-            /**
-             * 如果文件创建失败 抛出CREATE_MAPEDFILE_FAILED 有可能是磁盘空间不足或权限不够
-             */
+
+            // 如果文件创建失败 抛出CREATE_MAPEDFILE_FAILED 有可能是磁盘空间不足或权限不够
             if (null == mappedFile) {
                 log.error("create mapped file1 error, topic: " + msg.getTopic() + " clientAddr: " + msg.getBornHostString());
                 beginTimeInLock = 0;
                 return new PutMessageResult(PutMessageStatus.CREATE_MAPEDFILE_FAILED, null);
             }
-            /**
-             * 消息追加到MappedFile
-             */
+            // 消息追加到MappedFile
             result = mappedFile.appendMessage(msg, this.appendMessageCallback);
             switch (result.getStatus()) {
                 case PUT_OK:
@@ -974,10 +965,9 @@ public class CommitLog {
         // Statistics
         storeStatsService.getSinglePutMessageTopicTimesTotal(msg.getTopic()).incrementAndGet();
         storeStatsService.getSinglePutMessageTopicSizeTotal(topic).addAndGet(result.getWroteBytes());
-        /**
-         * 处理完消息追加逻辑之后释放putMessageResult锁
-         */
+        // 决定以何种方式刷盘
         handleDiskFlush(result, putMessageResult, msg);
+        // 将刷盘消息同步给slave
         handleHA(result, putMessageResult, msg);
 
         return putMessageResult;
@@ -1043,18 +1033,18 @@ public class CommitLog {
         if (FlushDiskType.SYNC_FLUSH == this.defaultMessageStore.getMessageStoreConfig().getFlushDiskType()) {
             final GroupCommitService service = (GroupCommitService) this.flushCommitLogService;
             if (messageExt.isWaitStoreMsgOK()) {
-                /**
-                 * 构建同步请求 并提交请求
-                 */
+                // 构建同步请求
                 GroupCommitRequest request = new GroupCommitRequest(result.getWroteOffset() + result.getWroteBytes());
+                // 并将刷盘请求提交给GroupCommitService
                 service.putRequest(request);
                 CompletableFuture<PutMessageStatus> flushOkFuture = request.future();
                 PutMessageStatus flushStatus = null;
                 try {
+                    // 阻塞等待刷盘成功
                     flushStatus = flushOkFuture.get(this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout(),
                             TimeUnit.MILLISECONDS);
                 } catch (InterruptedException | ExecutionException | TimeoutException e) {
-                    //flushOK=false;
+                    // flushOK=false;
                 }
                 if (flushStatus != PutMessageStatus.PUT_OK) {
                     log.error("do groupcommit, wait for flush failed, topic: " + messageExt.getTopic() + " tags: " + messageExt.getTags()
@@ -1071,15 +1061,11 @@ public class CommitLog {
          */
         else {
             if (!this.defaultMessageStore.getMessageStoreConfig().isTransientStorePoolEnable()) {
-                /**
-                 * 消息直接追加到与物理文件直接映射的内存中 然后刷到磁盘
-                 */
+                // 消息直接追加到与物理文件直接映射的内存中 然后刷到磁盘
                 flushCommitLogService.wakeup();
             } else {
-                /**
-                 * 单独申请一个与目标物理文件(CommitLog)同样大小的堆外内存 使用内存锁定将该块内存锁定
-                 * 确保不会被置换到虚拟内存中 再刷到磁盘
-                 */
+                // 单独申请一个与目标物理文件(CommitLog)同样大小的堆外内存 使用内存锁定将该块内存锁定
+                // 确保不会被置换到虚拟内存中 再刷到磁盘
                 commitLogService.wakeup();
             }
         }
@@ -1374,18 +1360,14 @@ public class CommitLog {
         public void run() {
             CommitLog.log.info(this.getServiceName() + " service started");
             while (!this.isStopped()) {
-                /**
-                 * 线程间隔时间 默认200ms
-                 */
+                // 线程间隔时间 默认200ms
                 int interval = CommitLog.this.defaultMessageStore.getMessageStoreConfig().getCommitIntervalCommitLog();
                 /**
                  * 一次提交任务至少包含页数 如果待提交的数据不足
                  * < 该配置的值(默认4页)将忽略本次提交任务
                  */
                 int commitDataLeastPages = CommitLog.this.defaultMessageStore.getMessageStoreConfig().getCommitCommitLogLeastPages();
-                /**
-                 * 两次提交任务最大时间间隔 默认200ms
-                 */
+                // 两次提交任务最大时间间隔 默认200ms
                 int commitDataThoroughInterval =
                         CommitLog.this.defaultMessageStore.getMessageStoreConfig().getCommitCommitLogThoroughInterval();
 
@@ -1414,9 +1396,7 @@ public class CommitLog {
                     if (end - begin > 500) {
                         log.info("Commit data to file costs {} ms", end - begin);
                     }
-                    /**
-                     * 每完成一次提交 等待200ms再执行下一次提交
-                     */
+                    // 每完成一次提交 等待200ms再执行下一次提交
                     this.waitForRunning(interval);
                 } catch (Throwable e) {
                     CommitLog.log.error(this.getServiceName() + " service has exception. ", e);
@@ -1643,23 +1623,17 @@ public class CommitLog {
                         // two times the flush
                         boolean flushOK = false;
                         for (int i = 0; i < 2 && !flushOK; i++) {
-                            /**
-                             * 当前已刷盘的指针 >= 提交的刷盘点 刷盘成功
-                             */
+                            // 当前已刷盘的指针 >= 提交的刷盘点 刷盘成功
                             flushOK = CommitLog.this.mappedFileQueue.getFlushedWhere() >= req.getNextOffset();
                             if (!flushOK) {
                                 CommitLog.this.mappedFileQueue.flush(0);
                             }
                         }
-                        /**
-                         * 释放阻塞锁
-                         */
+                        // 释放阻塞锁
                         req.wakeupCustomer(flushOK);
                     }
 
-                    /**
-                     * 刷盘任务完成后 更新刷盘检测点StoreCheckPoint的时间戳
-                     */
+                    // 刷盘任务完成后 更新刷盘检测点StoreCheckPoint的时间戳
                     long storeTimestamp = CommitLog.this.mappedFileQueue.getStoreTimestamp();
                     if (storeTimestamp > 0) {
                         CommitLog.this.defaultMessageStore.getStoreCheckpoint().setPhysicMsgTimestamp(storeTimestamp);

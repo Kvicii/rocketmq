@@ -269,11 +269,6 @@ public class DefaultMessageStore implements MessageStore {
         return result;
     }
 
-    /**
-     * broker启动时会启动ReputMessageService线程
-     *
-     * @throws Exception
-     */
     public void start() throws Exception {
 
         lock = lockFile.getChannel().tryLock(0, 1, false);
@@ -315,6 +310,7 @@ public class DefaultMessageStore implements MessageStore {
             }
             log.info("[SetReputOffset] maxPhysicalPosInLogicQueue={} clMinOffset={} clMaxOffset={} clConfirmedOffset={}",
                     maxPhysicalPosInLogicQueue, this.commitLog.getMinOffset(), this.commitLog.getMaxOffset(), this.commitLog.getConfirmOffset());
+            // broker启动时会启动ReputMessageService线程
             this.reputMessageService.setReputFromOffset(maxPhysicalPosInLogicQueue);
             this.reputMessageService.start();
 
@@ -342,6 +338,7 @@ public class DefaultMessageStore implements MessageStore {
         this.storeStatsService.start();
 
         this.createTempFile();
+        // 过期文件清除定时线程
         this.addScheduleTask();
         this.shutdown = false;
     }
@@ -1301,9 +1298,7 @@ public class DefaultMessageStore implements MessageStore {
 
     private void addScheduleTask() {
 
-        /**
-         * 检测是否需要清除过期文件 执行频率可以通过参数cleanResourceInterval更改 默认10s
-         */
+        // 检测是否需要清除过期文件 执行频率可以通过参数cleanResourceInterval更改 默认10s
         this.scheduledExecutorService.scheduleAtFixedRate(() ->
                         DefaultMessageStore.this.cleanFilesPeriodically(),
                 1000 * 60, this.messageStoreConfig.getCleanResourceInterval(), TimeUnit.MILLISECONDS);
@@ -1924,7 +1919,8 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     /**
-     * 转发CommitLog文件更新事件
+     * broker启动时开启此线程
+     * 负责将CommitLog文件更新事件转发出去 由任务处理器更新ConsumeQueue和IndexFile
      */
     class ReputMessageService extends ServiceThread {
 
@@ -1963,9 +1959,7 @@ public class DefaultMessageStore implements MessageStore {
             return this.reputFromOffset < DefaultMessageStore.this.commitLog.getMaxOffset();
         }
 
-        /**
-         * 消息转发的核心实现
-         */
+        // 消息转发的核心实现
         private void doReput() {
             if (this.reputFromOffset < DefaultMessageStore.this.commitLog.getMinOffset()) {
                 log.warn("The reputFromOffset={} is smaller than minPyOffset={}, this usually indicate that the dispatch behind too much and the commitlog has expired.",
@@ -1978,18 +1972,15 @@ public class DefaultMessageStore implements MessageStore {
                         && this.reputFromOffset >= DefaultMessageStore.this.getConfirmOffset()) {
                     break;
                 }
-                /**
-                 * 返回从reputFromOffset偏移量开始的全部有效数据
-                 */
+                // 返回从reputFromOffset偏移量开始的全部有效数据
                 SelectMappedBufferResult result = DefaultMessageStore.this.commitLog.getData(reputFromOffset);
                 if (result != null) {
                     try {
                         this.reputFromOffset = result.getStartOffset();
 
                         for (int readSize = 0; readSize < result.getSize() && doNext; ) {
-                            /**
-                             * 循环读取消息 检查消息并返回结果
-                             */
+
+                            // 循环读取消息 检查消息并返回结果(从CommitLog中获取要转发到ConsumeQueue和IndexFile的消息)
                             DispatchRequest dispatchRequest =
                                     DefaultMessageStore.this.commitLog.checkMessageAndReturnSize(result.getByteBuffer(), false, false);
                             int size = dispatchRequest.getBufferSize() == -1 ? dispatchRequest.getMsgSize() : dispatchRequest.getBufferSize();
@@ -2000,6 +1991,7 @@ public class DefaultMessageStore implements MessageStore {
                              */
                             if (dispatchRequest.isSuccess()) {
                                 if (size > 0) {
+                                    // 进行CommitLog转发的实际操作
                                     DefaultMessageStore.this.doDispatch(dispatchRequest);
 
                                     if (BrokerRole.SLAVE != DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole()
@@ -2053,12 +2045,9 @@ public class DefaultMessageStore implements MessageStore {
         @Override
         public void run() {
             DefaultMessageStore.log.info(this.getServiceName() + " service started");
-
             while (!this.isStopped()) {
                 try {
-                    /**
-                     * 每执行一次任务推送睡1m再继续推送
-                     */
+                    // 每执行一次任务推送间隔1ms再继续推送(将CommitLog中最近写入的消息进行转发)
                     Thread.sleep(1);
                     this.doReput();
                 } catch (Exception e) {

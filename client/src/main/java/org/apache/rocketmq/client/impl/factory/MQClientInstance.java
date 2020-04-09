@@ -640,7 +640,7 @@ public class MQClientInstance {
                                 1000 * 3);
                         if (topicRouteData != null) {
                             /**
-                             * 如果查询到路由信息 将路由消息中度写队列的个数替换为生产者默认的队列个数
+                             * 如果查询到路由信息 将路由消息中的写队列的个数替换为生产者默认的队列个数
                              */
                             for (QueueData data : topicRouteData.getQueueDatas()) {
                                 int queueNums = Math.min(defaultMQProducer.getDefaultTopicQueueNums(), data.getReadQueueNums());
@@ -1067,7 +1067,6 @@ public class MQClientInstance {
         if (map != null && !map.isEmpty()) {
             return map.get(MixAll.MASTER_ID);
         }
-
         return null;
     }
 
