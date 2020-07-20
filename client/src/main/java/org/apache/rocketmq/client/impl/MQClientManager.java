@@ -30,7 +30,7 @@ public class MQClientManager {
     private final static InternalLogger log = ClientLogger.getLog();
     /**
      * JVM实例只存在唯一一个MQClientManager实例
-     * 典型的单例模式获取MQClientManager
+     * 典型的饿汉式单例模式获取MQClientManager
      */
     private static MQClientManager instance = new MQClientManager();
     private AtomicInteger factoryIndexGenerator = new AtomicInteger();
@@ -57,14 +57,13 @@ public class MQClientManager {
          * 创建clientId 格式为IP@instance@unitname
          * 由于同一台物理机部署多个MQ时clientId可能会混乱
          * 所以如果instance为默认值DEFAULT时 RocketMQ会自动将instance设置为进程ID 避免了相互影响
-         * MQClientInstance是生产者、消费者与namesrv和broker之间的网络通道
+         * MQClientInstance是生产者 | 消费者与namesrv和broker之间的网络通道
          */
         String clientId = clientConfig.buildMQClientId();
         MQClientInstance instance = this.factoryTable.get(clientId);
         if (null == instance) {
-            instance =
-                    new MQClientInstance(clientConfig.cloneClientConfig(),
-                            this.factoryIndexGenerator.getAndIncrement(), clientId, rpcHook);
+            instance = new MQClientInstance(clientConfig.cloneClientConfig(),
+                    this.factoryIndexGenerator.getAndIncrement(), clientId, rpcHook);
             MQClientInstance prev = this.factoryTable.putIfAbsent(clientId, instance);
             if (prev != null) {
                 instance = prev;

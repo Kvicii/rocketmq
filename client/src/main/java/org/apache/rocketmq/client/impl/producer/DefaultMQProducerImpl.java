@@ -182,17 +182,22 @@ public class DefaultMQProducerImpl implements MQProducerInner {
     }
 
     /**
-     * 启动生产者
+     * 启动生产者 这里封装了客户端与Broker进行通信的方法
+     * 启动各种定时任务 与Broker之间的心跳等等
+     * 启动消息拉取服务
+     * 启动负载均衡服务
+     * 启动默认的Producer服务(重复启动了 因为客户端一开始就启动了这个)
      *
      * @param startFactory
      * @throws MQClientException
      */
     public void start(final boolean startFactory) throws MQClientException {
         switch (this.serviceState) {
-            case CREATE_JUST:
-                this.serviceState = ServiceState.START_FAILED;
+            case CREATE_JUST:   // 默认为CREATE_JUST状态
+                this.serviceState = ServiceState.START_FAILED;  // 先默认成启动失败 等最后完全启动成功的时候再置为ServiceState.RUNNING
                 /**
                  * 1.1.检查producerGroup
+                 * 检查配置(比如group有没有写 | 是不是默认的那个名字 | 长度是不是超出限制了等等一系列验证)
                  */
                 this.checkConfig();
                 /**
@@ -203,6 +208,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                 }
                 /**
                  * 2.创建MQClientInstance实例
+                 * 单例模式 获取MQClientInstance对象(客户端实例) 也就是Producer所部署的机器实例对象 负责操作的主要对象
                  */
                 this.mQClientFactory = MQClientManager.getInstance().getOrCreateMQClientInstance(this.defaultMQProducer, rpcHook);
                 /**
@@ -215,33 +221,28 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                             + "] has been created before, specify another name please." + FAQUrl.suggestTodo(FAQUrl.GROUP_NAME_DUPLICATE_URL),
                             null);
                 }
-
+                // 将topic信息存到topicPublishInfoTable这个map里
                 this.topicPublishInfoTable.put(this.defaultMQProducer.getCreateTopicKey(), new TopicPublishInfo());
-                /**
-                 * 4.启动MQClientInstance 如果已经启动 本次启动不会真正执行
-                 */
-                if (startFactory) {
+                if (startFactory) { // 4.启动MQClientInstance 如果已经启动 本次启动不会真正执行
                     mQClientFactory.start();
                 }
 
                 log.info("the producer [{}] start OK. sendMessageWithVIPChannel={}", this.defaultMQProducer.getProducerGroup(),
                         this.defaultMQProducer.isSendMessageWithVIPChannel());
-                this.serviceState = ServiceState.RUNNING;
+                this.serviceState = ServiceState.RUNNING;   // 都启动完成 没报错就将状态改为运行中
                 break;
             case RUNNING:
             case START_FAILED:
             case SHUTDOWN_ALREADY:
                 throw new MQClientException("The producer service state not OK, maybe started once, "
-                        + this.serviceState
-                        + FAQUrl.suggestTodo(FAQUrl.CLIENT_SERVICE_NOT_OK),
-                        null);
+                        + this.serviceState + FAQUrl.suggestTodo(FAQUrl.CLIENT_SERVICE_NOT_OK), null);
             default:
                 break;
         }
 
         this.mQClientFactory.sendHeartbeatToAllBrokerWithLock();
 
-        this.timer.scheduleAtFixedRate(new TimerTask() {
+        this.timer.scheduleAtFixedRate(new TimerTask() {    // 每隔1s扫描过期的请求
             @Override
             public void run() {
                 try {
@@ -450,9 +451,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
     private void makeSureStateOK() throws MQClientException {
         if (this.serviceState != ServiceState.RUNNING) {
             throw new MQClientException("The producer service state not OK, "
-                    + this.serviceState
-                    + FAQUrl.suggestTodo(FAQUrl.CLIENT_SERVICE_NOT_OK),
-                    null);
+                    + this.serviceState + FAQUrl.suggestTodo(FAQUrl.CLIENT_SERVICE_NOT_OK), null);
         }
     }
 
@@ -566,6 +565,17 @@ public class DefaultMQProducerImpl implements MQProducerInner {
     /**
      * 消息发送的核心实现类
      *
+     * RocketMQ是如何发消息的
+     *
+     * 首先需要配置好生产者组名 | namesrv地址和topic以及要发送的消息内容 然后启动Producer的start方法 启动完成后调用send方法进行发送
+     * start方法内部会进行检查namesrv | 生产者组名等参数验证 然后内部会获取一个mQClientFactory对象 此对象内包含了所有与Broker进行通信的api
+     * 然后通过mQClientFactory启动请求响应通道 主要是netty 接下来启动一些定时任务(比如与broker的心跳等) 还会启动负载均衡服务等 最后都启动成功的话将服务的状态标记为RUNNING
+     *
+     * 启动完成后调用send方法发消息 有三种发送方式: 同步 | 异步 | oneWay 区别的就是异步的多个线程池去异步调用发送请求而同步则是当前请求线程直接同步调用的
+     * 核心流程都是:
+     * 先选择一个合适的queue来存储消息 选择完后拼凑一个header参数对象 通过netty的形式发送给broker
+     * 值得注意的是: 如果发送失败的话他会自动重试 默认同步发送的次数是3次 也就是失败后会自动重试2次
+     *
      * @param msg
      * @param communicationMode
      * @param sendCallback
@@ -580,9 +590,8 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                                        final SendCallback sendCallback, final long timeout)
             throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
 
-        // 校验MQ状态是否正常
-        this.makeSureStateOK();
-        Validators.checkMessage(msg, this.defaultMQProducer);
+        this.makeSureStateOK(); // 校验MQ状态是否正常(RUNNING)
+        Validators.checkMessage(msg, this.defaultMQProducer);   // 消息格式的校验
         final long invokeID = random.nextLong();
         long beginTimestampFirst = System.currentTimeMillis();
         long beginTimestampPrev = beginTimestampFirst;
@@ -591,9 +600,10 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         TopicPublishInfo topicPublishInfo = this.tryToFindTopicPublishInfo(msg.getTopic());
         if (topicPublishInfo != null && topicPublishInfo.ok()) {
             boolean callTimeout = false;
-            MessageQueue mq = null;
+            MessageQueue mq = null; // 消息将要要发送的队列
             Exception exception = null;
-            SendResult sendResult = null;
+            SendResult sendResult = null;   //  发送结果
+            // 自动重试次数 defaultMQProducer.getRetryTimesWhenSendFailed 默认为2 如果是同步发送 默认重试3 否则重试1次
             int timesTotal = communicationMode == CommunicationMode.SYNC ? 1 + this.defaultMQProducer.getRetryTimesWhenSendFailed() : 1;
             int times = 0;
             String[] brokersSent = new String[timesTotal];
@@ -615,7 +625,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                             callTimeout = true;
                             break;
                         }
-                        // 叫消息投递到broker
+                        // 将消息投递到broker
                         sendResult = this.sendKernelImpl(msg, mq, communicationMode, sendCallback, topicPublishInfo, timeout - costTime);
                         endTimestamp = System.currentTimeMillis();
                         this.updateFaultItem(mq.getBrokerName(), endTimestamp - beginTimestampPrev, false);
@@ -624,7 +634,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                                 return null;
                             case ONEWAY:
                                 return null;
-                            case SYNC:
+                            case SYNC:  // 同步方发送方式 将返回的结果返回 如果返回结果状态不成功 则continue进入下一次循环进行重试
                                 if (sendResult.getSendStatus() != SendStatus.SEND_OK) {
                                     if (this.defaultMQProducer.isRetryAnotherBrokerWhenNotStoreOK()) {
                                         continue;
@@ -822,7 +832,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                     checkForbiddenContext.setUnitMode(this.isUnitMode());
                     this.executeCheckForbiddenHook(checkForbiddenContext);
                 }
-                 // 如果注册了消息发送的钩子函数 则先执行消息发送之前的增强操作
+                // 如果注册了消息发送的钩子函数 则先执行消息发送之前的增强操作
                 if (this.hasSendMessageHook()) {
                     context = new SendMessageContext();
                     context.setProducer(this);

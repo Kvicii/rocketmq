@@ -242,26 +242,41 @@ public class MQClientInstance {
         synchronized (this) {
             switch (this.serviceState) {
                 case CREATE_JUST:
-                    this.serviceState = ServiceState.START_FAILED;
+                    this.serviceState = ServiceState.START_FAILED;  // 先默认成启动失败 等最后完全启动成功的时候再置为ServiceState.RUNNING
                     // If not specified,looking address from name server
                     if (null == this.clientConfig.getNamesrvAddr()) {
                         this.mQClientAPIImpl.fetchNameServerAddr();
                     }
                     // Start request-response channel
-                    this.mQClientAPIImpl.start();
-                    // Start various schedule tasks
+                    this.mQClientAPIImpl.start();   // 启动请求响应通道 核心是netty
+                    /**
+                     * Start various schedule tasks
+                     * 启动各种定时任务
+                     * 1.每隔2分钟去检测namesrv的变化
+                     * 2.每隔30s从nameserver获取topic的路由信息有没有发生变化 或者说有没有新的topic路由信息
+                     * 3.每隔30s清除下线的broker
+                     * 4.每隔5s持久化所有的消费进度
+                     * 5.每隔1分钟检测线程池大小是否需要调整
+                     */
                     this.startScheduledTask();
                     /**
                      * Start pull service
                      * 启动消费者PULL消息服务
                      */
                     this.pullMessageService.start();
-                    // Start rebalance service
+                    /**
+                     * Start rebalance service
+                     * 启动Rebalance负载重平衡
+                     */
                     this.rebalanceService.start();
                     // Start push service
+                    /**
+                     * 再次调用了DefaultMQProducerImpl#start
+                     * 会重复执行两次DefaultMQProducerImpl#start里的其他逻辑
+                     */
                     this.defaultMQProducer.getDefaultMQProducerImpl().start(false);
                     log.info("the client factory [{}] start OK", this.clientId);
-                    this.serviceState = ServiceState.RUNNING;
+                    this.serviceState = ServiceState.RUNNING;   // 都启动完成没报错的话 就将状态改为运行中
                     break;
                 case START_FAILED:
                     throw new MQClientException("The Factory object[" + this.getClientId() + "] has been created before, and failed.", null);
@@ -286,9 +301,6 @@ public class MQClientInstance {
             }, 1000 * 10, 1000 * 60 * 2, TimeUnit.MILLISECONDS);
         }
 
-        /**
-         * 定时获取topic路由信息
-         */
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
