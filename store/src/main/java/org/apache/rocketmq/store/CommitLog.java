@@ -1345,7 +1345,7 @@ public class CommitLog {
     /**
      * 异步刷盘实现
      * transientStorePoolEnable参数开启的情况(true)
-     * 先刷到堆外内存 将该快内存锁定 之后在追加到与物理文件直接映射的内存中
+     * 先刷到堆外内存 将该块内存锁定 之后在追加到与物理文件直接映射的内存中
      */
     class CommitRealTimeService extends FlushCommitLogService {
 
@@ -1652,7 +1652,7 @@ public class CommitLog {
             CommitLog.log.info(this.getServiceName() + " service started");
             while (!this.isStopped()) {
                 try {
-                    this.waitForRunning(10);
+                    this.waitForRunning(10);    // 异步刷盘默认10s执行一次
                     this.doCommit();
                 } catch (Exception e) {
                     CommitLog.log.warn(this.getServiceName() + " service has exception. ", e);
