@@ -42,6 +42,10 @@ import java.security.PrivilegedAction;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
+
+/**
+ * 对应commitlog物理文件
+ */
 public class MappedFile extends ReferenceResource {
 
     /**
@@ -359,9 +363,9 @@ public class MappedFile extends ReferenceResource {
                 try {
                     // We only append data to fileChannel or mappedByteBuffer, never both.
                     if (writeBuffer != null || this.fileChannel.position() != 0) {
-                        this.fileChannel.force(false);
+                        this.fileChannel.force(false);  // NIO 刷盘
                     } else {
-                        this.mappedByteBuffer.force();
+                        this.mappedByteBuffer.force();  // NIO 刷盘
                     }
                 } catch (Throwable e) {
                     log.error("Error occurred when force data to disk.", e);

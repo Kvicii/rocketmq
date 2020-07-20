@@ -46,6 +46,7 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * Store all metadata downtime for recovery, data protection reliability
+ * 针对MappedFileQueue封装使用
  */
 public class CommitLog {
     // Message's MAGIC CODE daa320a7
@@ -654,7 +655,7 @@ public class CommitLog {
 
         long elapsedTimeInLock = 0;
         MappedFile unlockMappedFile = null;
-        MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();
+        MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();   // 获取最后一个commitlog文件
 
         putMessageLock.lock(); //spin or ReentrantLock ,depending on store config
         try {
@@ -674,7 +675,7 @@ public class CommitLog {
                 return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.CREATE_MAPEDFILE_FAILED, null));
             }
 
-            result = mappedFile.appendMessage(msg, this.appendMessageCallback);
+            result = mappedFile.appendMessage(msg, this.appendMessageCallback); // 追加数据到commitlog 并未刷盘
             switch (result.getStatus()) {
                 case PUT_OK:
                     break;
@@ -722,8 +723,8 @@ public class CommitLog {
         storeStatsService.getSinglePutMessageTopicTimesTotal(msg.getTopic()).incrementAndGet();
         storeStatsService.getSinglePutMessageTopicSizeTotal(topic).addAndGet(result.getWroteBytes());
 
-        CompletableFuture<PutMessageStatus> flushResultFuture = submitFlushRequest(result, putMessageResult, msg);
-        CompletableFuture<PutMessageStatus> replicaResultFuture = submitReplicaRequest(result, putMessageResult, msg);
+        CompletableFuture<PutMessageStatus> flushResultFuture = submitFlushRequest(result, putMessageResult, msg);  // 将内存的数据持久化到磁盘
+        CompletableFuture<PutMessageStatus> replicaResultFuture = submitReplicaRequest(result, putMessageResult, msg);  // 将内存的数据持久化到各个Slave
         return flushResultFuture.thenCombine(replicaResultFuture, (flushStatus, replicaStatus) -> {
             if (flushStatus != PutMessageStatus.PUT_OK) {
                 putMessageResult.setPutMessageStatus(PutMessageStatus.FLUSH_DISK_TIMEOUT);
@@ -975,6 +976,13 @@ public class CommitLog {
 
     /**
      * 刷盘实现方法
+     * <p>
+     * Broker收到消息后如何持久化
+     * 有两种方式: 同步和异步 一般选择异步 同步效率低但是更可靠
+     * 消息存储大致原理是:
+     * 核心类MappedFile对应的是每个commitlog文件 MappedFileQueue相当于文件夹 管理所有的文件
+     * 还有一个管理者CommitLog对象 他负责提供一些操作
+     * 具体的是Broker端拿到消息后先将消息 | topic | queue等内容存到ByteBuffer里 然后去持久化到commitlog文件中 commitlog文件大小为1G 超出大小会新创建commitlog文件来存储 采取的nio方式
      *
      * @param result
      * @param putMessageResult
@@ -983,7 +991,7 @@ public class CommitLog {
     public CompletableFuture<PutMessageStatus> submitFlushRequest(AppendMessageResult result, PutMessageResult putMessageResult,
                                                                   MessageExt messageExt) {
         // Synchronization flush
-        if (FlushDiskType.SYNC_FLUSH == this.defaultMessageStore.getMessageStoreConfig().getFlushDiskType()) {
+        if (FlushDiskType.SYNC_FLUSH == this.defaultMessageStore.getMessageStoreConfig().getFlushDiskType()) {  // 同步刷盘
             final GroupCommitService service = (GroupCommitService) this.flushCommitLogService;
             if (messageExt.isWaitStoreMsgOK()) {
                 GroupCommitRequest request = new GroupCommitRequest(result.getWroteOffset() + result.getWroteBytes(),
@@ -996,7 +1004,7 @@ public class CommitLog {
             }
         }
         // Asynchronous flush
-        else {
+        else {  // 异步刷盘
             if (!this.defaultMessageStore.getMessageStoreConfig().isTransientStorePoolEnable()) {
                 flushCommitLogService.wakeup();
             } else {
@@ -1338,12 +1346,15 @@ public class CommitLog {
         return diff;
     }
 
+    /**
+     * 3个实现类的刷盘性能: CommitRealTimeService > FlushRealTimeService > GroupCommitService
+     */
     abstract class FlushCommitLogService extends ServiceThread {
         protected static final int RETRY_TIMES_OVER = 10;
     }
 
     /**
-     * 异步刷盘实现
+     * 异步刷盘实现 开启字节缓冲区 刷盘性能最高
      * transientStorePoolEnable参数开启的情况(true)
      * 先刷到堆外内存 将该块内存锁定 之后在追加到与物理文件直接映射的内存中
      */
@@ -1413,9 +1424,15 @@ public class CommitLog {
     }
 
     /**
-     * 异步刷盘实现
+     * 异步刷盘实现 关闭内存字节缓冲区 刷盘性能较高
      * transientStorePoolEnable参数未开启的情况(false)
      * 消息直接追加到与物理文件直接映射的内存中
+     * <p>
+     * 核心方法: FlushRealTimeService#run
+     * 判断flushCommitLogTimed是不是true(默认false) 是true则直接sleep(500ms)然后进行mappedFileQueue.flush刷盘
+     * 若是false 进入waitForRunning(500) 这里是和同步刷盘的区别关键所在:
+     * 同步刷盘之前将hasNotified变为true了 所以直接return+doCommit了
+     * 异步这里直接调用的waitForRunning(500) 在这之前没任何对hasNotified的操作 所以不会return而是会继续走下面的waitPoint.await(500, TimeUnit.MILLISECONDS) 进行阻塞500毫秒 500毫秒后自动唤醒然后进行flush刷盘 也就是异步刷盘的话默认500ms刷盘一次
      */
     class FlushRealTimeService extends FlushCommitLogService {
 
@@ -1463,22 +1480,21 @@ public class CommitLog {
                 }
                 /**
                  * 执行一次刷盘任务前先等待指定时间间隔再执行刷盘
+                 * 即每500ms刷一次盘
                  */
                 try {
                     if (flushCommitLogTimed) {
                         Thread.sleep(interval);
-                    } else {
+                    } else {    // 和同步刷盘调用的是同一个方法 区别在于这里没有将hasNotified变为true 也就是还是默认的false 那么waitForRunning方法内部的第一个判断就不会执行 就不会return掉
+                        // 就会进行下面的await方法再次阻塞(默认阻塞时间是500毫秒 也就是默认1s刷一次盘)
                         this.waitForRunning(interval);
                     }
 
                     if (printFlushProgress) {
                         this.printFlushProgress();
                     }
-                    /**
-                     * 调用flush将内存中的数据刷写到磁盘
-                     */
                     long begin = System.currentTimeMillis();
-                    CommitLog.this.mappedFileQueue.flush(flushPhysicQueueLeastPages);
+                    CommitLog.this.mappedFileQueue.flush(flushPhysicQueueLeastPages);   // 调用flush将内存中的数据刷写到磁盘
                     long storeTimestamp = CommitLog.this.mappedFileQueue.getStoreTimestamp();
                     if (storeTimestamp > 0) {
                         /**
@@ -1573,8 +1589,14 @@ public class CommitLog {
     }
 
     /**
-     * 同步刷盘服务实现
+     * 同步刷盘服务实现 刷完盘才会返回消息写入成功 刷盘性能最低
      * GroupCommit Service
+     * <p>
+     * 同步刷盘的主要流程:
+     * 核心方法 是waitForRunning
+     * 先调用putRequest方法将hasNotified变为true且waitPoint.countDown
+     * 其次是run方法里的waitForRunning，waitForRunning判断hasNotified是不是true 是true则交换数据然后return 也就是不进行await阻塞直接return
+     * 最后上一步return了 没有阻塞 那么顺理成章的调用doCommit进行真正意义的刷盘
      */
     class GroupCommitService extends FlushCommitLogService {
 
@@ -1597,6 +1619,7 @@ public class CommitLog {
             synchronized (this.requestsWrite) {
                 this.requestsWrite.add(request);
             }
+            // 设置成true 然后计数器 -1 下面run方法的时候才会进行交换数据且return
             if (hasNotified.compareAndSet(false, true)) {
                 waitPoint.countDown(); // notify
             }
@@ -1613,7 +1636,7 @@ public class CommitLog {
         }
 
         /**
-         * 调用flush-->force完成刷盘
+         * 调用flush -> force完成刷盘
          */
         private void doCommit() {
             synchronized (this.requestsRead) {
@@ -1652,8 +1675,8 @@ public class CommitLog {
             CommitLog.log.info(this.getServiceName() + " service started");
             while (!this.isStopped()) {
                 try {
-                    this.waitForRunning(10);    // 异步刷盘默认10s执行一次
-                    this.doCommit();
+                    this.waitForRunning(10);    // 是同步还是异步的关键方法(即阻不阻塞全看这里) 异步刷盘默认10ms执行一次
+                    this.doCommit();    // 真正的刷盘逻辑
                 } catch (Exception e) {
                     CommitLog.log.warn(this.getServiceName() + " service has exception. ", e);
                 }
@@ -1695,7 +1718,7 @@ public class CommitLog {
         private final ByteBuffer msgIdMemory;
         private final ByteBuffer msgIdV6Memory;
         // Store the message content
-        private final ByteBuffer msgStoreItemMemory;
+        private final ByteBuffer msgStoreItemMemory;    // 把消息保存到缓冲区里 也就是msgStoreItemMemory 这里采取的NIO
         // The maximum length of the message
         private final int maxMessageSize;
         // Build Message Key

@@ -133,7 +133,7 @@ public abstract class ServiceThread implements Runnable {
     }
 
     protected void waitForRunning(long interval) {
-        if (hasNotified.compareAndSet(true, false)) {
+        if (hasNotified.compareAndSet(true, false)) {   // 如果是true且给他改成false成功的话 则执行onWaitEnd并且return 但是默认是false 也就是默认情况下这个if不会进
             this.onWaitEnd();
             return;
         }
@@ -142,11 +142,11 @@ public abstract class ServiceThread implements Runnable {
         waitPoint.reset();
 
         try {
-            waitPoint.await(interval, TimeUnit.MILLISECONDS);
+            waitPoint.await(interval, TimeUnit.MILLISECONDS);   // 等待 默认值是1 也就是waitPoint.countDown一次后就会激活这里
         } catch (InterruptedException e) {
             log.error("Interrupted", e);
         } finally {
-            hasNotified.set(false);
+            hasNotified.set(false); // 给状态值设置成false
             this.onWaitEnd();
         }
     }

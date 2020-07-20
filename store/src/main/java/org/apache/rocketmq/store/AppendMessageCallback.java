@@ -27,7 +27,7 @@ public interface AppendMessageCallback {
 
     /**
      * After message serialization, write MapedByteBuffer
-     * 实际写入消息到CommitLog
+     * 将消息追加到CommitLog内存映射 并未刷盘
      *
      * @return How many bytes to write
      */

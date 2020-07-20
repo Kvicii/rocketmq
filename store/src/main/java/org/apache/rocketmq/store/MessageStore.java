@@ -55,9 +55,10 @@ public interface MessageStore {
      */
     void destroy();
 
-    /** Store a message into store in async manner, the processor can process the next request
-     *  rather than wait for result
-     *  when result is completed, notify the client in async manner
+    /**
+     * Store a message into store in async manner, the processor can process the next request
+     * rather than wait for result
+     * when result is completed, notify the client in async manner
      *
      * @param msg MessageInstance to store
      * @return a CompletableFuture for the result of store operation
@@ -68,6 +69,7 @@ public interface MessageStore {
 
     /**
      * Store a batch of messages in async manner
+     *
      * @param messageExtBatch the message batch
      * @return a CompletableFuture for the result of store operation
      */
