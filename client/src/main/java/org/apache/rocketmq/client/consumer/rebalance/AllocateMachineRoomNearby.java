@@ -16,20 +16,21 @@
  */
 package org.apache.rocketmq.client.consumer.rebalance;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.client.consumer.AllocateMessageQueueStrategy;
 import org.apache.rocketmq.client.log.ClientLogger;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.logging.InternalLogger;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+
 /**
  * An allocate strategy proxy for based on machine room nearside priority. An actual allocate strategy can be
  * specified.
- *
+ * <p>
  * If any consumer is alive in a machine room, the message queue of the broker which is deployed in the same machine
  * should only be allocated to those. Otherwise, those message queues can be shared along all consumers since there are
  * no alive consumer to monopolize them.
@@ -41,7 +42,7 @@ public class AllocateMachineRoomNearby implements AllocateMessageQueueStrategy {
     private final MachineRoomResolver machineRoomResolver;
 
     public AllocateMachineRoomNearby(AllocateMessageQueueStrategy allocateMessageQueueStrategy,
-        MachineRoomResolver machineRoomResolver) throws NullPointerException {
+                                     MachineRoomResolver machineRoomResolver) throws NullPointerException {
         if (allocateMessageQueueStrategy == null) {
             throw new NullPointerException("allocateMessageQueueStrategy is null");
         }
@@ -56,7 +57,7 @@ public class AllocateMachineRoomNearby implements AllocateMessageQueueStrategy {
 
     @Override
     public List<MessageQueue> allocate(String consumerGroup, String currentCID, List<MessageQueue> mqAll,
-        List<String> cidAll) {
+                                       List<String> cidAll) {
         if (currentCID == null || currentCID.length() < 1) {
             throw new IllegalArgumentException("currentCID is empty");
         }
@@ -70,9 +71,9 @@ public class AllocateMachineRoomNearby implements AllocateMessageQueueStrategy {
         List<MessageQueue> result = new ArrayList<MessageQueue>();
         if (!cidAll.contains(currentCID)) {
             log.info("[BUG] ConsumerGroup: {} The consumerId: {} not in cidAll: {}",
-                consumerGroup,
-                currentCID,
-                cidAll);
+                    consumerGroup,
+                    currentCID,
+                    cidAll);
             return result;
         }
 
@@ -131,9 +132,9 @@ public class AllocateMachineRoomNearby implements AllocateMessageQueueStrategy {
 
     /**
      * A resolver object to determine which machine room do the message queues or clients are deployed in.
-     *
+     * <p>
      * AllocateMachineRoomNearby will use the results to group the message queues and clients by machine room.
-     *
+     * <p>
      * The result returned from the implemented method CANNOT be null.
      */
     public interface MachineRoomResolver {
