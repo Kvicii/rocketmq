@@ -184,7 +184,7 @@ public class BrokerStartup {
             JoranConfigurator configurator = new JoranConfigurator();
             configurator.setContext(lc);
             lc.reset();
-            configurator.doConfigure(brokerConfig.getRocketmqHome() + "/conf/logback_broker.xml");
+            configurator.doConfigure(brokerConfig.getRocketmqHome() + "/distribution/conf/logback_broker.xml");
             // 如果命令行中包含-p/-m 启动broker的时print配置信息
             if (commandLine.hasOption('p')) {
                 InternalLogger console = InternalLoggerFactory.getLogger(LoggerName.BROKER_CONSOLE_NAME);
