@@ -28,78 +28,78 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 import java.io.File;
 
 public class NamesrvConfig {
-    private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
+	private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
 
-    /**
-     * rocketmq主目录 可以通过-Drocketmq.home.dir=path或者通过设置环境变量ROCKETMQ_HOME来配置
-     */
-    private String rocketmqHome = System.getProperty(MixAll.ROCKETMQ_HOME_PROPERTY, System.getenv(MixAll.ROCKETMQ_HOME_ENV));
-    /**
-     * namesrv存储KV配置属性的持久化路径
-     */
-    private String kvConfigPath = System.getProperty("user.home") + File.separator + "namesrv" + File.separator + "kvConfig.json";
-    /**
-     * namesrv默认配置文件路径(不生效) 如果需要在启动时指定需要使用-c属性
-     */
-    private String configStorePath = System.getProperty("user.home") + File.separator + "namesrv" + File.separator + "namesrv.properties";
-    /**
-     * 生产环境的名称
-     */
-    private String productEnvName = "center";
-    /**
-     * 是否启动了clusterTest测试集群
-     */
-    private boolean clusterTest = false;
-    /**
-     * 是否支持顺序消息
-     */
-    private boolean orderMessageEnable = false;
+	/**
+	 * rocketmq主目录 可以通过-Drocketmq.home.dir=path或者通过设置环境变量ROCKETMQ_HOME来配置
+	 */
+	private String rocketmqHome = System.getProperty(MixAll.ROCKETMQ_HOME_PROPERTY, System.getenv(MixAll.ROCKETMQ_HOME_ENV));
+	/**
+	 * namesrv存储KV配置属性的持久化路径
+	 */
+	private String kvConfigPath = System.getProperty("user.home") + File.separator + "namesrv" + File.separator + "kvConfig.json";
+	/**
+	 * namesrv默认配置文件路径(不生效) 如果需要在启动时指定需要使用-c属性
+	 */
+	private String configStorePath = System.getProperty("user.home") + File.separator + "namesrv" + File.separator + "namesrv.properties";
+	/**
+	 * 生产环境的名称
+	 */
+	private String productEnvName = "center";
+	/**
+	 * 是否启动了clusterTest测试集群
+	 */
+	private boolean clusterTest = false;
+	/**
+	 * 是否支持顺序消息
+	 */
+	private boolean orderMessageEnable = false;
 
-    public boolean isOrderMessageEnable() {
-        return orderMessageEnable;
-    }
+	public boolean isOrderMessageEnable() {
+		return orderMessageEnable;
+	}
 
-    public void setOrderMessageEnable(boolean orderMessageEnable) {
-        this.orderMessageEnable = orderMessageEnable;
-    }
+	public void setOrderMessageEnable(boolean orderMessageEnable) {
+		this.orderMessageEnable = orderMessageEnable;
+	}
 
-    public String getRocketmqHome() {
-        return rocketmqHome;
-    }
+	public String getRocketmqHome() {
+		return rocketmqHome;
+	}
 
-    public void setRocketmqHome(String rocketmqHome) {
-        this.rocketmqHome = rocketmqHome;
-    }
+	public void setRocketmqHome(String rocketmqHome) {
+		this.rocketmqHome = rocketmqHome;
+	}
 
-    public String getKvConfigPath() {
-        return kvConfigPath;
-    }
+	public String getKvConfigPath() {
+		return kvConfigPath;
+	}
 
-    public void setKvConfigPath(String kvConfigPath) {
-        this.kvConfigPath = kvConfigPath;
-    }
+	public void setKvConfigPath(String kvConfigPath) {
+		this.kvConfigPath = kvConfigPath;
+	}
 
-    public String getProductEnvName() {
-        return productEnvName;
-    }
+	public String getProductEnvName() {
+		return productEnvName;
+	}
 
-    public void setProductEnvName(String productEnvName) {
-        this.productEnvName = productEnvName;
-    }
+	public void setProductEnvName(String productEnvName) {
+		this.productEnvName = productEnvName;
+	}
 
-    public boolean isClusterTest() {
-        return clusterTest;
-    }
+	public boolean isClusterTest() {
+		return clusterTest;
+	}
 
-    public void setClusterTest(boolean clusterTest) {
-        this.clusterTest = clusterTest;
-    }
+	public void setClusterTest(boolean clusterTest) {
+		this.clusterTest = clusterTest;
+	}
 
-    public String getConfigStorePath() {
-        return configStorePath;
-    }
+	public String getConfigStorePath() {
+		return configStorePath;
+	}
 
-    public void setConfigStorePath(final String configStorePath) {
-        this.configStorePath = configStorePath;
-    }
+	public void setConfigStorePath(final String configStorePath) {
+		this.configStorePath = configStorePath;
+	}
 }

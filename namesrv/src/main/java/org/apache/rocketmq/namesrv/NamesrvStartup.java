@@ -44,173 +44,173 @@ import java.util.concurrent.Callable;
 
 public class NamesrvStartup {
 
-    private static InternalLogger log;
-    private static Properties properties = null;
-    private static CommandLine commandLine = null;
+	private static InternalLogger log;
+	private static Properties properties = null;
+	private static CommandLine commandLine = null;
 
-    public static void main(String[] args) {
-        main0(args);
-    }
+	public static void main(String[] args) {
+		main0(args);
+	}
 
-    public static NamesrvController main0(String[] args) {
+	public static NamesrvController main0(String[] args) {
 
-        try {
-            NamesrvController controller = createNamesrvController(args);
-            start(controller);
-            String tip = "The Name Server boot success. serializeType=" + RemotingCommand.getSerializeTypeConfigInThisServer();
-            log.info(tip);
-            System.out.printf("%s%n", tip);
-            return controller;
-        } catch (Throwable e) {
-            e.printStackTrace();
-            System.exit(-1);
-        }
+		try {
+			NamesrvController controller = createNamesrvController(args);
+			start(controller);
+			String tip = "The Name Server boot success. serializeType=" + RemotingCommand.getSerializeTypeConfigInThisServer();
+			log.info(tip);
+			System.out.printf("%s%n", tip);
+			return controller;
+		} catch (Throwable e) {
+			e.printStackTrace();
+			System.exit(-1);
+		}
 
-        return null;
-    }
+		return null;
+	}
 
-    public static NamesrvController createNamesrvController(String[] args) throws IOException, JoranException {
-        System.setProperty(RemotingCommand.REMOTING_VERSION_KEY, Integer.toString(MQVersion.CURRENT_VERSION));
-        // PackageConflictDetect.detectFastjson();
+	public static NamesrvController createNamesrvController(String[] args) throws IOException, JoranException {
+		System.setProperty(RemotingCommand.REMOTING_VERSION_KEY, Integer.toString(MQVersion.CURRENT_VERSION));
+		// PackageConflictDetect.detectFastjson();
 
-        Options options = ServerUtil.buildCommandlineOptions(new Options());
-        commandLine = ServerUtil.parseCmdLine("mqnamesrv", args, buildCommandlineOptions(options), new PosixParser());
-        if (null == commandLine) {
-            System.exit(-1);
-            return null;
-        }
+		Options options = ServerUtil.buildCommandlineOptions(new Options());
+		commandLine = ServerUtil.parseCmdLine("mqnamesrv", args, buildCommandlineOptions(options), new PosixParser());
+		if (null == commandLine) {
+			System.exit(-1);
+			return null;
+		}
 
-        /**
-         * 构造namesrvConfig nettyServerConfig
-         * 填充namesrvConfig nettyServerConfig属性值
-         */
-        final NamesrvConfig namesrvConfig = new NamesrvConfig();
-        final NettyServerConfig nettyServerConfig = new NettyServerConfig();
-        /**
-         * netty监听端口9876 接收broker和客户端的网络请求
-         */
-        nettyServerConfig.setListenPort(9876);
-        /**
-         * 启动rocketmq时加上 -c 选项 后面会带上一个配置文件的地址 进而去解析文件中的内容
-         */
-        if (commandLine.hasOption('c')) {
-            String file = commandLine.getOptionValue('c');
-            if (file != null) {
-                /**
-                 * 从输入流服务配置放到properties中
-                 */
-                InputStream in = new BufferedInputStream(new FileInputStream(file));
-                properties = new Properties();
-                properties.load(in);
-                /**
-                 * 读取配置的内容放到配置类
-                 */
-                MixAll.properties2Object(properties, namesrvConfig);
-                MixAll.properties2Object(properties, nettyServerConfig);
+		/**
+		 * 构造namesrvConfig nettyServerConfig
+		 * 填充namesrvConfig nettyServerConfig属性值
+		 */
+		final NamesrvConfig namesrvConfig = new NamesrvConfig();
+		final NettyServerConfig nettyServerConfig = new NettyServerConfig();
+		/**
+		 * netty监听端口9876 接收broker和客户端的网络请求
+		 */
+		nettyServerConfig.setListenPort(9876);
+		/**
+		 * 启动rocketmq时加上 -c 选项 后面会带上一个配置文件的地址 进而去解析文件中的内容
+		 */
+		if (commandLine.hasOption('c')) {
+			String file = commandLine.getOptionValue('c');
+			if (file != null) {
+				/**
+				 * 从输入流服务配置放到properties中
+				 */
+				InputStream in = new BufferedInputStream(new FileInputStream(file));
+				properties = new Properties();
+				properties.load(in);
+				/**
+				 * 读取配置的内容放到配置类
+				 */
+				MixAll.properties2Object(properties, namesrvConfig);
+				MixAll.properties2Object(properties, nettyServerConfig);
 
-                namesrvConfig.setConfigStorePath(file);
-                System.out.printf("load config properties file OK, %s%n", file);
-                in.close();
-            }
-        }
-        /**
-         * 启动rocketmq时加上 -p 选项 print出namesrv的所有配置信息
-         */
-        if (commandLine.hasOption('p')) {
-            InternalLogger console = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_CONSOLE_NAME);
-            MixAll.printObjectProperties(console, namesrvConfig);
-            MixAll.printObjectProperties(console, nettyServerConfig);
-            System.exit(0);
-        }
-        /**
-         * mqnamesrv命令行带上的配置选项都读取出来 覆盖到namesrvConfig中
-         */
-        MixAll.properties2Object(ServerUtil.commandLine2Properties(commandLine), namesrvConfig);
-        /**
-         * 没有ROCKETMQ_HOME 输出异常日志
-         */
-        if (null == namesrvConfig.getRocketmqHome()) {
-            System.out.printf("Please set the %s variable in your environment to match the location of the RocketMQ installation%n", MixAll.ROCKETMQ_HOME_ENV);
-            System.exit(-2);
-        }
-        /**
-         * Logger Configurator相关信息
-         */
-        LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
-        JoranConfigurator configurator = new JoranConfigurator();
-        configurator.setContext(lc);
-        lc.reset();
-        configurator.doConfigure(namesrvConfig.getRocketmqHome() + "/distribution/conf/logback_namesrv.xml");
-        /**
-         * print namesrv所有配置信息
-         */
-        log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
-        MixAll.printObjectProperties(log, namesrvConfig);
-        MixAll.printObjectProperties(log, nettyServerConfig);
-        /**
-         * 构造NamesrvController组件
-         */
-        final NamesrvController controller = new NamesrvController(namesrvConfig, nettyServerConfig);
+				namesrvConfig.setConfigStorePath(file);
+				System.out.printf("load config properties file OK, %s%n", file);
+				in.close();
+			}
+		}
+		/**
+		 * 启动rocketmq时加上 -p 选项 print出namesrv的所有配置信息
+		 */
+		if (commandLine.hasOption('p')) {
+			InternalLogger console = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_CONSOLE_NAME);
+			MixAll.printObjectProperties(console, namesrvConfig);
+			MixAll.printObjectProperties(console, nettyServerConfig);
+			System.exit(0);
+		}
+		/**
+		 * mqnamesrv命令行带上的配置选项都读取出来 覆盖到namesrvConfig中
+		 */
+		MixAll.properties2Object(ServerUtil.commandLine2Properties(commandLine), namesrvConfig);
+		/**
+		 * 没有ROCKETMQ_HOME 输出异常日志
+		 */
+		if (null == namesrvConfig.getRocketmqHome()) {
+			System.out.printf("Please set the %s variable in your environment to match the location of the RocketMQ installation%n", MixAll.ROCKETMQ_HOME_ENV);
+			System.exit(-2);
+		}
+		/**
+		 * Logger Configurator相关信息
+		 */
+		LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
+		JoranConfigurator configurator = new JoranConfigurator();
+		configurator.setContext(lc);
+		lc.reset();
+		configurator.doConfigure(namesrvConfig.getRocketmqHome() + "/distribution/conf/logback_namesrv.xml");
+		/**
+		 * print namesrv所有配置信息
+		 */
+		log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
+		MixAll.printObjectProperties(log, namesrvConfig);
+		MixAll.printObjectProperties(log, nettyServerConfig);
+		/**
+		 * 构造NamesrvController组件
+		 */
+		final NamesrvController controller = new NamesrvController(namesrvConfig, nettyServerConfig);
 
-        // remember all configs to prevent discard
-        controller.getConfiguration().registerConfig(properties);
+		// remember all configs to prevent discard
+		controller.getConfiguration().registerConfig(properties);
 
-        return controller;
-    }
+		return controller;
+	}
 
-    /**
-     * controller参数里已包含封装好的namesrvConfig和nettyServerConfig配置信息
-     *
-     * @param controller
-     * @return
-     */
-    public static NamesrvController start(final NamesrvController controller) {
+	/**
+	 * controller参数里已包含封装好的namesrvConfig和nettyServerConfig配置信息
+	 *
+	 * @param controller
+	 * @return
+	 */
+	public static NamesrvController start(final NamesrvController controller) {
 
-        if (null == controller) {
-            throw new IllegalArgumentException("NamesrvController is null");
-        }
+		if (null == controller) {
+			throw new IllegalArgumentException("NamesrvController is null");
+		}
 
-        /**
-         * 初始化NamesrvController实例
-         */
-        boolean initResult = controller.initialize();
-        if (!initResult) {
-            controller.shutdown();
-            System.exit(-3);
-        }
+		/**
+		 * 初始化NamesrvController实例
+		 */
+		boolean initResult = controller.initialize();
+		if (!initResult) {
+			controller.shutdown();
+			System.exit(-3);
+		}
 
-        /**
-         * 注册JVM钩子函数 JVM关闭时会执行shutdown回调函数
-         * 如果代码中使用了线程池 优雅的关闭方式就是注册一个钩子函数 在JVM进程关闭之前先将线程池关闭 及时释放资源
-         */
-        Runtime.getRuntime().addShutdownHook(new ShutdownHookThread(log, (Callable<Void>) () -> {
-            controller.shutdown();
-            return null;
-        }));
-        /**
-         * 启动服务器
-         */
-        controller.start();
-        return controller;
-    }
+		/**
+		 * 注册JVM钩子函数 JVM关闭时会执行shutdown回调函数
+		 * 如果代码中使用了线程池 优雅的关闭方式就是注册一个钩子函数 在JVM进程关闭之前先将线程池关闭 及时释放资源
+		 */
+		Runtime.getRuntime().addShutdownHook(new ShutdownHookThread(log, (Callable<Void>) () -> {
+			controller.shutdown();
+			return null;
+		}));
+		/**
+		 * 启动服务器
+		 */
+		controller.start();
+		return controller;
+	}
 
-    public static void shutdown(final NamesrvController controller) {
-        controller.shutdown();
-    }
+	public static void shutdown(final NamesrvController controller) {
+		controller.shutdown();
+	}
 
-    public static Options buildCommandlineOptions(final Options options) {
-        Option opt = new Option("c", "configFile", true, "Name server config properties file");
-        opt.setRequired(false);
-        options.addOption(opt);
+	public static Options buildCommandlineOptions(final Options options) {
+		Option opt = new Option("c", "configFile", true, "Name server config properties file");
+		opt.setRequired(false);
+		options.addOption(opt);
 
-        opt = new Option("p", "printConfigItem", false, "Print all config item");
-        opt.setRequired(false);
-        options.addOption(opt);
+		opt = new Option("p", "printConfigItem", false, "Print all config item");
+		opt.setRequired(false);
+		options.addOption(opt);
 
-        return options;
-    }
+		return options;
+	}
 
-    public static Properties getProperties() {
-        return properties;
-    }
+	public static Properties getProperties() {
+		return properties;
+	}
 }
