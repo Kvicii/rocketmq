@@ -49,7 +49,9 @@ public class NamesrvController {
 
 	private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl(
 			"NSScheduledThread"));
+
 	private final KVConfigManager kvConfigManager;
+
 	private final RouteInfoManager routeInfoManager;
 
 	private RemotingServer remotingServer;
@@ -59,6 +61,7 @@ public class NamesrvController {
 	private ExecutorService remotingExecutor;
 
 	private Configuration configuration;
+
 	private FileWatchService fileWatchService;
 
 	public NamesrvController(NamesrvConfig namesrvConfig, NettyServerConfig nettyServerConfig) {
@@ -67,10 +70,7 @@ public class NamesrvController {
 		this.kvConfigManager = new KVConfigManager(this);
 		this.routeInfoManager = new RouteInfoManager();
 		this.brokerHousekeepingService = new BrokerHousekeepingService(this);
-		this.configuration = new Configuration(
-				log,
-				this.namesrvConfig, this.nettyServerConfig
-		);
+		this.configuration = new Configuration(log, this.namesrvConfig, this.nettyServerConfig);
 		this.configuration.setStorePathFromConfig(this.namesrvConfig, "configStorePath");
 	}
 
@@ -91,16 +91,18 @@ public class NamesrvController {
 				Executors.newFixedThreadPool(nettyServerConfig.getServerWorkerThreads(), new ThreadFactoryImpl("RemotingExecutorThread_"));
 		/**
 		 * 将netty工作线程池配置到netty网络服务器
+		 * Processor是请求处理器 是namesrv用来处理网络请求的组件
 		 */
 		this.registerProcessor();
 		/**
 		 * 创建用于心跳检测的定时任务
-		 * 1.每隔10s扫描一次broker 移除没有处于激活状态的broker
+		 * 1.每隔10s扫描一次broker 移除不活跃的broker
 		 * 2.每隔10m打印一次KV配置
 		 */
 		this.scheduledExecutorService.scheduleAtFixedRate(() -> NamesrvController.this.routeInfoManager.scanNotActiveBroker(), 5, 10, TimeUnit.SECONDS);
 		this.scheduledExecutorService.scheduleAtFixedRate(() -> NamesrvController.this.kvConfigManager.printAllPeriodically(), 1, 10, TimeUnit.MINUTES);
 
+		// 和FileWatch相关的逻辑
 		if (TlsSystemConfig.tlsMode != TlsMode.DISABLED) {
 			// Register a listener to reload SslContext
 			try {
@@ -149,8 +151,8 @@ public class NamesrvController {
 			this.remotingServer.registerDefaultProcessor(new ClusterTestRequestProcessor(this,
 					namesrvConfig.getProductEnvName()), this.remotingExecutor);
 		} else {
-			// 把namesrv的默认请求处理组件(DefaultRequestProcessor)注册进去
-			// 这是注册给了netty server的  netty server收到网络请求都会由这个组件来处理
+			// 把namesrv的默认请求处理组件(DefaultRequestProcessor)注册给了netty server
+			// 后续netty server收到网络请求都会由这个组件来处理
 			this.remotingServer.registerDefaultProcessor(new DefaultRequestProcessor(this), this.remotingExecutor);
 		}
 	}
