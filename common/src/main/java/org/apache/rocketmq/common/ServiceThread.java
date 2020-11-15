@@ -25,144 +25,144 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public abstract class ServiceThread implements Runnable {
 
-    private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
+	private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
 
-    private static final long JOIN_TIME = 90 * 1000;
+	private static final long JOIN_TIME = 90 * 1000;
 
-    private Thread thread;
+	private Thread thread;
 
-    protected final CountDownLatch2 waitPoint = new CountDownLatch2(1);
+	protected final CountDownLatch2 waitPoint = new CountDownLatch2(1);
 
-    protected volatile AtomicBoolean hasNotified = new AtomicBoolean(false);
+	protected volatile AtomicBoolean hasNotified = new AtomicBoolean(false);
 
-    protected volatile boolean stopped = false;
+	protected volatile boolean stopped = false;
 
-    protected boolean isDaemon = false;
+	protected boolean isDaemon = false;
 
-    //Make it able to restart the thread
-    private final AtomicBoolean started = new AtomicBoolean(false);
+	//Make it able to restart the thread
+	private final AtomicBoolean started = new AtomicBoolean(false);
 
-    public ServiceThread() {
+	public ServiceThread() {
 
-    }
+	}
 
-    public abstract String getServiceName();
+	public abstract String getServiceName();
 
-    public void start() {
-        log.info("Try to start service thread:{} started:{} lastThread:{}", getServiceName(), started.get(), thread);
-        if (!started.compareAndSet(false, true)) {
-            return;
-        }
-        stopped = false;
-        this.thread = new Thread(this, getServiceName());
-        this.thread.setDaemon(isDaemon);
-        this.thread.start();
-    }
+	public void start() {
+		log.info("Try to start service thread:{} started:{} lastThread:{}", getServiceName(), started.get(), thread);
+		if (!started.compareAndSet(false, true)) {
+			return;
+		}
+		stopped = false;
+		this.thread = new Thread(this, getServiceName());
+		this.thread.setDaemon(isDaemon);
+		this.thread.start();
+	}
 
-    public void shutdown() {
-        this.shutdown(false);
-    }
+	public void shutdown() {
+		this.shutdown(false);
+	}
 
-    public void shutdown(final boolean interrupt) {
-        log.info("Try to shutdown service thread:{} started:{} lastThread:{}", getServiceName(), started.get(), thread);
-        if (!started.compareAndSet(true, false)) {
-            return;
-        }
-        this.stopped = true;
-        log.info("shutdown thread " + this.getServiceName() + " interrupt " + interrupt);
+	public void shutdown(final boolean interrupt) {
+		log.info("Try to shutdown service thread:{} started:{} lastThread:{}", getServiceName(), started.get(), thread);
+		if (!started.compareAndSet(true, false)) {
+			return;
+		}
+		this.stopped = true;
+		log.info("shutdown thread " + this.getServiceName() + " interrupt " + interrupt);
 
-        if (hasNotified.compareAndSet(false, true)) {
-            waitPoint.countDown(); // notify
-        }
+		if (hasNotified.compareAndSet(false, true)) {
+			waitPoint.countDown(); // notify
+		}
 
-        try {
-            if (interrupt) {
-                this.thread.interrupt();
-            }
+		try {
+			if (interrupt) {
+				this.thread.interrupt();
+			}
 
-            long beginTime = System.currentTimeMillis();
-            if (!this.thread.isDaemon()) {
-                this.thread.join(this.getJointime());
-            }
-            long elapsedTime = System.currentTimeMillis() - beginTime;
-            log.info("join thread " + this.getServiceName() + " elapsed time(ms) " + elapsedTime + " "
-                    + this.getJointime());
-        } catch (InterruptedException e) {
-            log.error("Interrupted", e);
-        }
-    }
+			long beginTime = System.currentTimeMillis();
+			if (!this.thread.isDaemon()) {
+				this.thread.join(this.getJointime());
+			}
+			long elapsedTime = System.currentTimeMillis() - beginTime;
+			log.info("join thread " + this.getServiceName() + " elapsed time(ms) " + elapsedTime + " "
+					+ this.getJointime());
+		} catch (InterruptedException e) {
+			log.error("Interrupted", e);
+		}
+	}
 
-    public long getJointime() {
-        return JOIN_TIME;
-    }
+	public long getJointime() {
+		return JOIN_TIME;
+	}
 
-    @Deprecated
-    public void stop() {
-        this.stop(false);
-    }
+	@Deprecated
+	public void stop() {
+		this.stop(false);
+	}
 
-    @Deprecated
-    public void stop(final boolean interrupt) {
-        if (!started.get()) {
-            return;
-        }
-        this.stopped = true;
-        log.info("stop thread " + this.getServiceName() + " interrupt " + interrupt);
+	@Deprecated
+	public void stop(final boolean interrupt) {
+		if (!started.get()) {
+			return;
+		}
+		this.stopped = true;
+		log.info("stop thread " + this.getServiceName() + " interrupt " + interrupt);
 
-        if (hasNotified.compareAndSet(false, true)) {
-            waitPoint.countDown(); // notify
-        }
+		if (hasNotified.compareAndSet(false, true)) {
+			waitPoint.countDown(); // notify
+		}
 
-        if (interrupt) {
-            this.thread.interrupt();
-        }
-    }
+		if (interrupt) {
+			this.thread.interrupt();
+		}
+	}
 
-    public void makeStop() {
-        if (!started.get()) {
-            return;
-        }
-        this.stopped = true;
-        log.info("makestop thread " + this.getServiceName());
-    }
+	public void makeStop() {
+		if (!started.get()) {
+			return;
+		}
+		this.stopped = true;
+		log.info("makestop thread " + this.getServiceName());
+	}
 
-    public void wakeup() {
-        if (hasNotified.compareAndSet(false, true)) {
-            waitPoint.countDown(); // notify
-        }
-    }
+	public void wakeup() {
+		if (hasNotified.compareAndSet(false, true)) {
+			waitPoint.countDown(); // notify
+		}
+	}
 
-    protected void waitForRunning(long interval) {
-        if (hasNotified.compareAndSet(true, false)) {   // 如果是true且给他改成false成功的话 则执行onWaitEnd并且return 但是默认是false 也就是默认情况下这个if不会进
-            this.onWaitEnd();
-            return;
-        }
+	protected void waitForRunning(long interval) {
+		if (hasNotified.compareAndSet(true, false)) {   // 如果是true且给他改成false成功的话 则执行onWaitEnd并且return 但是默认是false 也就是默认情况下这个if不会进
+			this.onWaitEnd();
+			return;
+		}
 
-        //entry to wait
-        waitPoint.reset();
+		//entry to wait
+		waitPoint.reset();
 
-        try {
-            waitPoint.await(interval, TimeUnit.MILLISECONDS);   // 等待 默认值是1 也就是waitPoint.countDown一次后就会激活这里
-        } catch (InterruptedException e) {
-            log.error("Interrupted", e);
-        } finally {
-            hasNotified.set(false); // 给状态值设置成false
-            this.onWaitEnd();
-        }
-    }
+		try {
+			waitPoint.await(interval, TimeUnit.MILLISECONDS);   // 等待 默认值是1 也就是waitPoint.countDown一次后就会激活这里
+		} catch (InterruptedException e) {
+			log.error("Interrupted", e);
+		} finally {
+			hasNotified.set(false); // 给状态值设置成false
+			this.onWaitEnd();
+		}
+	}
 
-    protected void onWaitEnd() {
-    }
+	protected void onWaitEnd() {
+	}
 
-    public boolean isStopped() {
-        return stopped;
-    }
+	public boolean isStopped() {
+		return stopped;
+	}
 
-    public boolean isDaemon() {
-        return isDaemon;
-    }
+	public boolean isDaemon() {
+		return isDaemon;
+	}
 
-    public void setDaemon(boolean daemon) {
-        isDaemon = daemon;
-    }
+	public void setDaemon(boolean daemon) {
+		isDaemon = daemon;
+	}
 }

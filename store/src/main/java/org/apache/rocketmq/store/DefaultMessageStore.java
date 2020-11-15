@@ -1571,6 +1571,11 @@ public class DefaultMessageStore implements MessageStore {
 
 	class CommitLogDispatcherBuildConsumeQueue implements CommitLogDispatcher {
 
+		/**
+		 * 将从CommitLog中拉取的消息转发到ConsumeQueue文件
+		 *
+		 * @param request
+		 */
 		@Override
 		public void dispatch(DispatchRequest request) {
 			final int tranType = MessageSysFlag.getTransactionValue(request.getSysFlag());
@@ -1588,6 +1593,11 @@ public class DefaultMessageStore implements MessageStore {
 
 	class CommitLogDispatcherBuildIndex implements CommitLogDispatcher {
 
+		/**
+		 * 将从CommitLog中拉取的消息转发到IndexFile
+		 *
+		 * @param request
+		 */
 		@Override
 		public void dispatch(DispatchRequest request) {
 			if (DefaultMessageStore.this.messageStoreConfig.isMessageIndexEnable()) {
@@ -2047,7 +2057,7 @@ public class DefaultMessageStore implements MessageStore {
 			DefaultMessageStore.log.info(this.getServiceName() + " service started");
 			while (!this.isStopped()) {
 				try {
-					// 每执行一次任务推送间隔1ms再继续推送(将CommitLog中最近写入的消息进行转发)
+					// 每执行一次任务推送间隔1ms再继续推送(将CommitLog中最近写入的消息进行转发到IndexFile和MessageQueue)
 					Thread.sleep(1);
 					this.doReput();
 				} catch (Exception e) {
